@@ -707,7 +707,10 @@ async function cloudPush(){ if(!sb||!USER)return; try{
  }catch(e){} }
 async function authSignUp(){const em=(document.getElementById('emIn')||{}).value,pw=(document.getElementById('pwIn')||{}).value;
  if(!em||!pw||pw.length<6){toast('Email + palavra-passe (mín. 6 caracteres)');return;}
- const {error}=await sb.auth.signUp({email:em,password:pw}); toast(error?('Erro: '+error.message):'Conta criada ✅ (se pedir, confirma o email)');}
+ const {data,error}=await sb.auth.signUp({email:em,password:pw,options:{emailRedirectTo:location.origin+location.pathname}});
+ if(error){toast('Erro: '+error.message);gateMsg('Erro: '+error.message);}
+ else if(data&&data.session){toast('Conta criada ✅');}
+ else{toast('Conta criada — confirma no email e volta aqui');gateMsg('Enviámos um email de confirmação. Confirma e depois faz Entrar.');}}
 async function authSignIn(){const em=(document.getElementById('emIn')||{}).value,pw=(document.getElementById('pwIn')||{}).value;
  if(!em||!pw){toast('Preenche email e palavra-passe');return;}
  const {error}=await sb.auth.signInWithPassword({email:em,password:pw}); if(error)toast('Erro: '+error.message); else toast('Sessão iniciada ✅');}
