@@ -299,7 +299,9 @@ ul.safe li::before{content:"🛡";position:absolute;left:0;top:6px}
   margin-top:4px;background:var(--grad);color:#fff}
 .gate-btn.ghost{background:transparent;border:1px solid var(--line);color:var(--txt);margin-top:9px}
 .gate-btn:active{transform:scale(.99)}
-.gate-msg{font-size:12px;color:var(--warn);margin-top:12px;min-height:16px}
+.gate-hint{font-size:10.5px;color:var(--mut2);text-align:left;margin:-4px 2px 10px}
+.gate-hint b{color:var(--mut)}
+.gate-msg{font-size:12.5px;color:var(--warn);margin-top:12px;min-height:16px;line-height:1.45}
 .gate-foot{font-size:10.5px;color:var(--mut2);margin-top:14px}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -312,7 +314,8 @@ ul.safe li::before{content:"🛡";position:absolute;left:0;top:6px}
     <h1>Treino Vanilson</h1>
     <p>Área privada. Entra com a tua conta para aceder ao plano e aos teus registos.</p>
     <input id="emIn" class="li" type="email" placeholder="email" autocomplete="username">
-    <input id="pwIn" class="li" type="password" placeholder="palavra-passe (mín. 6)" autocomplete="current-password">
+    <input id="pwIn" class="li" type="password" placeholder="palavra-passe" autocomplete="current-password">
+    <div class="gate-hint">Mín. 8 caracteres, com letra, número e símbolo (ex.: <b>Treino#2026</b>).</div>
     <button class="gate-btn" onclick="authSignIn()">Entrar</button>
     <button class="gate-btn ghost" onclick="authSignUp()">Criar conta</button>
     <div id="gateMsg" class="gate-msg"></div>
@@ -688,7 +691,6 @@ const SUPA_ANON='sb_publishable_739Cd4HJWV5VWDeOZ765XQ_QwiBDIow';  // Chave publ
 /* ▲▲▲ enquanto estiverem vazios, a app funciona só no dispositivo ▲▲▲ */
 let sb=null, USER=null;
 const cloudConfigured=()=>SUPA_URL.indexOf('http')===0 && SUPA_ANON.length>20;
-function gateMsg(m){const el=document.getElementById('gateMsg');if(el)el.textContent=m||'';}
 function applyGate(){const g=document.getElementById('gate');if(g)g.style.display=USER?'none':'flex';if(USER){gateMsg('');if(mode==='day')renderDay();else renderHome();}}
 function initCloud(){
  if(!cloudConfigured()||!window.supabase){gateMsg('Sem ligação ao servidor. Verifica a internet e recarrega a página.');return;}
@@ -705,15 +707,41 @@ async function cloudPull(){ if(!sb||!USER)return; try{
 async function cloudPush(){ if(!sb||!USER)return; try{
   await sb.from('user_state').upsert({user_id:USER.id,data:STATE,updated_at:new Date().toISOString()});
  }catch(e){} }
-async function authSignUp(){const em=(document.getElementById('emIn')||{}).value,pw=(document.getElementById('pwIn')||{}).value;
- if(!em||!pw||pw.length<6){toast('Email + palavra-passe (mín. 6 caracteres)');return;}
+function gateMsg(m,ok){const el=document.getElementById('gateMsg');if(el){el.textContent=m||'';el.style.color=ok?'#2ee6a8':'';}}
+function authErr(m){m=(m||'').toLowerCase();
+ if(m.indexOf('not confirmed')>-1)return 'Conta por confirmar. No Supabase desliga "Confirm email" e tenta de novo.';
+ if(m.indexOf('rate limit')>-1||m.indexOf('too many')>-1)return 'Demasiadas tentativas. Espera ~15 min ou desliga "Confirm email" no Supabase.';
+ if(m.indexOf('invalid login')>-1||m.indexOf('invalid credentials')>-1)return 'NO_ACCOUNT';
+ if(m.indexOf('api key')>-1)return 'Chave de API inválida — verifica a chave no Supabase.';
+ if(m.indexOf('already registered')>-1||m.indexOf('already exists')>-1||m.indexOf('already been registered')>-1)return 'EXISTS';
+ if(m.indexOf('password')>-1&&m.indexOf('weak')>-1)return 'Palavra-passe demasiado fraca.';
+ return m||'Erro desconhecido.';}
+function pwCheck(pw){
+ if((pw||'').length<8)return 'A palavra-passe precisa de pelo menos 8 caracteres.';
+ if(!/[A-Za-z]/.test(pw))return 'Inclui pelo menos uma letra.';
+ if(!/[0-9]/.test(pw))return 'Inclui pelo menos um número.';
+ if(!/[^A-Za-z0-9]/.test(pw))return 'Inclui pelo menos um símbolo (ex.: ! @ # $ %).';
+ return '';}
+async function authSignIn(){
+ if(!sb){gateMsg('⚠ Servidor ainda a ligar. Espera 2s e tenta.');return;}
+ const em=(document.getElementById('emIn')||{}).value.trim(),pw=(document.getElementById('pwIn')||{}).value;
+ if(!em||!pw){gateMsg('Escreve o email e a palavra-passe.');return;}
+ gateMsg('A entrar…');
+ const {error}=await sb.auth.signInWithPassword({email:em,password:pw});
+ if(!error){gateMsg('');return;}
+ const e=authErr(error.message);
+ if(e==='NO_ACCOUNT')gateMsg('⚠ Conta não existe (ou palavra-passe errada). Se és novo, carrega em “Criar conta” aqui em baixo 👇');
+ else gateMsg('⚠ '+e);}
+async function authSignUp(){
+ if(!sb){gateMsg('⚠ Servidor ainda a ligar. Espera 2s e tenta.');return;}
+ const em=(document.getElementById('emIn')||{}).value.trim(),pw=(document.getElementById('pwIn')||{}).value;
+ if(!em){gateMsg('Escreve o teu email.');return;}
+ const pe=pwCheck(pw); if(pe){gateMsg('⚠ '+pe);return;}
+ gateMsg('A criar conta…');
  const {data,error}=await sb.auth.signUp({email:em,password:pw,options:{emailRedirectTo:location.origin+location.pathname}});
- if(error){toast('Erro: '+error.message);gateMsg('Erro: '+error.message);}
- else if(data&&data.session){toast('Conta criada ✅');}
- else{toast('Conta criada — confirma no email e volta aqui');gateMsg('Enviámos um email de confirmação. Confirma e depois faz Entrar.');}}
-async function authSignIn(){const em=(document.getElementById('emIn')||{}).value,pw=(document.getElementById('pwIn')||{}).value;
- if(!em||!pw){toast('Preenche email e palavra-passe');return;}
- const {error}=await sb.auth.signInWithPassword({email:em,password:pw}); if(error)toast('Erro: '+error.message); else toast('Sessão iniciada ✅');}
+ if(error){const e=authErr(error.message);gateMsg('⚠ '+(e==='EXISTS'?'Este email já tem conta. Usa “Entrar”.':e));return;}
+ if(data&&data.session){gateMsg('✅ Conta criada com sucesso! A entrar…',true);/* onAuthStateChange abre a app */}
+ else gateMsg('✅ Conta criada. Falta confirmar por email — desliga "Confirm email" no Supabase e depois faz Entrar.',true);}
 async function authSignOut(){try{await sb.auth.signOut();}catch(e){} USER=null; mode='home'; curDay=null; toast('Sessão terminada'); applyGate();}
 function cloudCard(){
  if(!USER)return '';
