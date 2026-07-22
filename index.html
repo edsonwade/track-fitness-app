@@ -263,9 +263,11 @@ ul.safe li::before{content:"";position:absolute;left:0;top:6px}
 .lnote{width:100%;margin-top:11px;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px;
   color:var(--txt);font-size:13px;font-family:inherit;resize:vertical;min-height:44px;outline:none}
 .lnote:focus{border-color:#7c8cff}
-.savebtn{width:100%;margin-top:8px;padding:15px;border:0;border-radius:14px;background:linear-gradient(120deg,#2ee6a8,#12b5c9);
-  color:#04231c;font-size:15px;font-weight:800;cursor:pointer;box-shadow:0 10px 26px -10px #2ee6a8}
-.savebtn:active{transform:scale(.99)}
+.savebtn{display:block;margin:14px auto 0;max-width:320px;width:100%;padding:12px 16px;border:0;border-radius:12px;
+  background:linear-gradient(120deg,#2ee6a8,#12b5c9);color:#04231c;font-size:13.5px;font-weight:800;cursor:pointer;
+  box-shadow:0 10px 24px -12px #2ee6a8;transition:.15s}
+.savebtn:active{transform:scale(.98)}
+.sect-t[id]{scroll-margin-top:110px}
 .toast{position:fixed;left:50%;bottom:92px;transform:translateX(-50%) translateY(20px);
   background:#eef2f9;color:#12151d;font-size:13px;font-weight:700;padding:12px 18px;border-radius:12px;z-index:120;
   box-shadow:0 12px 30px -8px rgba(0,0,0,.6);opacity:0;pointer-events:none;transition:.25s}
@@ -312,6 +314,26 @@ ul.safe li::before{content:"";position:absolute;left:0;top:6px}
 .redflag b{color:var(--warn)}
 .disclaimer{font-size:11px;color:var(--mut2);text-align:center;margin:18px 0 8px;line-height:1.6}
 .hidden{display:none}
+/* GRÁFICO dashboard */
+.chartcard{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin:2px 0 14px;box-shadow:var(--shadow)}
+.chartcard.empty{color:var(--mut);font-size:12.5px;text-align:center;padding:22px;line-height:1.5}
+.chart-h{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px}
+.chart-h span{font-size:13px;font-weight:800}
+.chart-sel{max-width:56%;background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:8px 10px;color:var(--txt);font-size:12px;font-weight:700;outline:none;cursor:pointer}
+.chart-wrap{position:relative;height:220px}
+@media(max-width:520px){.chart-wrap{height:190px}}
+.restnote{margin-top:16px;text-align:left;background:var(--bg2);border:1px solid var(--line);border-radius:13px;padding:12px 13px}
+.restnote .lnote{margin-top:8px}
+/* GRÁFICO progressão (SVG) */
+.pgchart{background:var(--bg2);border:1px solid var(--line);border-radius:14px;padding:12px 10px 8px;margin-top:4px}
+.pgcap{text-align:center;font-size:10.5px;color:var(--mut2);margin-top:4px}
+.pglist{margin-top:10px;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.pgrow{display:grid;grid-template-columns:auto 1fr 1fr 1.3fr;gap:8px;align-items:center;padding:9px 12px;background:var(--bg2);font-size:12px;border-bottom:1px solid var(--line)}
+.pgrow:last-child{border-bottom:0}
+.pgrow.cur{background:rgba(124,140,255,.12)}
+.pgrow .pgb{font-weight:800}
+.pgrow .pgv{color:var(--mut)}
+.pgrow .pgl{color:var(--lime);text-align:right;font-weight:600;font-size:11px}
 /* MODAL adicionar/editar exercício */
 .modal{position:fixed;inset:0;z-index:250;display:none;align-items:flex-end;justify-content:center;
   background:rgba(0,0,0,.55);backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px)}
@@ -405,6 +427,7 @@ ul.safe li::before{content:"";position:absolute;left:0;top:6px}
 }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 </head>
 <body>
 
@@ -824,7 +847,7 @@ async function loadState(){let s=await idbGet('state');if(!s){try{s=JSON.parse(l
 const ICO_MOON='<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A7.5 7.5 0 1 1 10.2 4.3 6 6 0 0 0 20 14.5Z"/></svg>';
 const ICO_SUN='<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="3.8"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5 5l1.4 1.4M17.6 17.6L19 19M19 5l-1.4 1.4M6.4 17.6L5 19"/></svg>';
 function applyTheme(){const t=STATE.theme==='light'?'light':'dark';if(document.body&&document.body.setAttribute)document.body.setAttribute('data-theme',t);const b=document.getElementById('themeBtn');if(b)b.innerHTML=t==='light'?ICO_SUN:ICO_MOON;}
-function toggleTheme(){STATE.theme=STATE.theme==='light'?'dark':'light';saveState();applyTheme();}
+function toggleTheme(){STATE.theme=STATE.theme==='light'?'dark':'light';saveState();applyTheme();if(mode==='home')setTimeout(function(){try{initProgChart();}catch(e){}},60);}
 function saveLocal(){idbSet('state',STATE);try{localStorage.setItem(DBN,JSON.stringify(STATE));}catch(e){}}
 let _sv;function saveState(){clearTimeout(_sv);_sv=setTimeout(()=>{saveLocal();cloudPush();},200);}
 
@@ -961,7 +984,27 @@ function renderBlockBar(show){
   `<div class="blockbar">${BLOCKS.map(b=>`<div class="bblk ${b.k===curBlock?'on':''}" onclick="setBlock('${b.k}')"><div class="bt">${b.t}</div><div class="bs">${b.s}</div></div>`).join('')}</div>`:'';
 }
 function setBlock(k){curBlock=k;renderBlockBar(mode==='day');if(mode==='day')renderDay();else renderHome();}
-function goHome(scroll){mode='home';curDay=null;openCard=null;renderNav();renderBlockBar(false);renderHome();window.scrollTo({top:0,behavior:'smooth'});if(scroll==='week')setTimeout(()=>document.getElementById('weekAnchor')?.scrollIntoView({behavior:'smooth'}),60);if(scroll==='prog')setTimeout(()=>document.getElementById('progAnchor')?.scrollIntoView({behavior:'smooth'}),60);}
+function goHome(scroll){mode='home';curDay=null;openCard=null;renderNav();renderBlockBar(false);renderHome();
+ if(scroll==='week'||scroll==='prog'){const id=scroll==='week'?'weekAnchor':'progAnchor';setTimeout(()=>{const el=document.getElementById(id);if(el)el.scrollIntoView({behavior:'smooth',block:'start'});},140);}
+ else window.scrollTo({top:0,behavior:'smooth'});}
+function onRestNote(v){STATE.restNote=v;saveState();}
+/* ---- Gráfico de progressão (dashboard) ---- */
+let progChartInst=null, chartSel=null;
+function fmtShort(iso){try{const d=new Date(iso);return ('0'+d.getDate()).slice(-2)+'/'+('0'+(d.getMonth()+1)).slice(-2);}catch(e){return'';}}
+function chartData(){const map={};(STATE.sessions||[]).slice().reverse().forEach(sn=>{(sn.entries||[]).forEach(en=>{const w=parseFloat(String(en.w||'').replace(',','.'));if(en.w&&!isNaN(w)){(map[en.name]=map[en.name]||[]).push({date:sn.date,w});}});});return map;}
+function progChartHTML(){const map=chartData();const names=Object.keys(map);
+ if(!names.length)return `<div class="chartcard empty">Ainda sem dados para o gráfico. Regista pesos e guarda sessões — a tua progressão de carga aparece aqui, bonita e ao vivo.</div>`;
+ if(!chartSel||names.indexOf(chartSel)<0)chartSel=names[0];
+ return `<div class="chartcard"><div class="chart-h"><span>Progressão de carga</span>
+   <select class="chart-sel" onchange="setChartEx(this.value)">${names.map(n=>`<option ${n===chartSel?'selected':''}>${n.replace(/"/g,'')}</option>`).join('')}</select></div>
+   <div class="chart-wrap"><canvas id="progChart"></canvas></div></div>`;}
+function setChartEx(v){chartSel=v;initProgChart();}
+function initProgChart(){if(!window.Chart)return;const cv=document.getElementById('progChart');if(!cv)return;
+ const map=chartData();if(!chartSel||!map[chartSel])return;const pts=map[chartSel];
+ if(progChartInst){try{progChartInst.destroy();}catch(e){}progChartInst=null;}
+ const light=STATE.theme==='light';const grid=light?'rgba(30,40,60,.10)':'rgba(150,160,180,.14)';const tick=light?'#5d6675':'#98a1b4';
+ const g=cv.getContext('2d').createLinearGradient(0,0,0,200);g.addColorStop(0,'rgba(124,140,255,.35)');g.addColorStop(1,'rgba(124,140,255,0)');
+ progChartInst=new Chart(cv,{type:'line',data:{labels:pts.map(p=>fmtShort(p.date)),datasets:[{data:pts.map(p=>p.w),borderColor:'#7c8cff',backgroundColor:g,fill:true,tension:.35,borderWidth:3,pointRadius:4,pointHoverRadius:6,pointBackgroundColor:'#7c8cff',pointBorderColor:'#fff',pointBorderWidth:1.5}]},options:{responsive:true,maintainAspectRatio:false,animation:{duration:600},plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>c.parsed.y+' kg'}}},scales:{y:{grid:{color:grid},ticks:{color:tick,callback:v=>v+' kg'}},x:{grid:{display:false},ticks:{color:tick,maxRotation:0}}}}});}
 function goToday(){openDay(todayId());}
 function openDay(id){mode='day';curDay=id;openCard=null;renderNav();const d=DAYS.find(x=>x.id===id);renderBlockBar(d.type!=='rest');try{renderDay();}catch(e){var v=document.getElementById('view');if(v)v.innerHTML='<div style="padding:24px;color:var(--warn);font-size:13px">Ocorreu um erro a mostrar este dia. Recarrega a página. ('+(e&&e.message||e)+')</div>';}window.scrollTo({top:0,behavior:'smooth'});}
 
@@ -1010,6 +1053,7 @@ function renderHome(){
     <div class="mcard"><div class="l">Sessões guardadas</div><div class="v">${STATE.sessions.length}</div><div class="s">no histórico</div></div>
     <div class="mcard"><div class="l">Última sessão</div><div class="v dim" style="${STATE.sessions.length?'color:var(--txt);font-size:14px':''}">${STATE.sessions.length?fmtDate(STATE.sessions[0].date):'— ainda nenhuma'}</div><div class="s">${STATE.sessions.length?STATE.sessions[0].dayName.split(' — ')[0]:'regista ao treinar'}</div></div>
   </div>
+  ${progChartHTML()}
   <div class="synced">Guardado na tua conta — sincroniza sozinho entre dispositivos.</div>
   <div class="hist">${historyHTML()}</div>
 
@@ -1017,6 +1061,7 @@ function renderHome(){
     <b>Split de 6 dias:</b> Seg quadríceps · Ter peito+tríceps · Qua ombro+bíceps · Qui costas+peito mínimo · Sex posterior+panturrilha · Sáb cardio+core · Dom descanso.
     <div class="redflag"><b>Bandeiras vermelhas — pára e avisa:</b><br>Dor lombar aguda ou irradiando para a perna, dor articular, tontura. Dor muscular tardia é normal.</div>
   </div>`;
+ try{initProgChart();}catch(e){}
 }
 
 /* ---- DAY VIEW ---- */
@@ -1128,11 +1173,23 @@ function errPanel(e){
   <div class="breath"><span class="ic"></span><div class="t">Dor <b style="color:var(--warn)">articular ou lombar</b> (não muscular) → para e reduz a carga. Técnica &gt; ego.</div></div>`;
 }
 function progPanel(it){
- const rows=BLOCKS.map(b=>{const p=it[b.k];
-  return `<tr class="${b.k===curBlock?'cur':''}"><td>${b.t}</td><td>${p.s}</td><td>${p.r}</td><td>${p.rpe}</td><td>${p.l}</td></tr>`;}).join('');
+ const B=BLOCKS.map(b=>{const p=it[b.k];return {t:b.t,k:b.k,s:parseInt(p.s)||0,r:p.r,rpe:p.rpe,l:p.l};});
+ const maxS=Math.max.apply(null,B.map(x=>x.s).concat(1));
+ const W=340,H=150,bw=44,gap=(W-20-B.length*bw)/(B.length-1),base=122,top=16;
+ const col={b1:'#7c8cff',b2:'#00d2ff',b3:'#ff5c7a',dl:'#8a93a5'};
+ let bars='';
+ B.forEach((x,i)=>{const h=x.s?Math.max(4,(base-top)*(x.s/maxS)):3;const bx=10+i*(bw+gap);const by=base-h;const on=x.k===curBlock;
+  bars+=`<rect x="${bx}" y="${by}" width="${bw}" height="${h}" rx="7" fill="${col[x.k]}" opacity="${on?1:.5}"/>`+
+   (on?`<rect x="${bx-2}" y="${by-2}" width="${bw+4}" height="${h+2}" rx="8" fill="none" stroke="${col[x.k]}" stroke-width="1.6"/>`:'')+
+   `<text x="${bx+bw/2}" y="${by-6}" text-anchor="middle" style="fill:var(--txt)" font-size="13" font-weight="700">${x.s||'—'}</text>`+
+   `<text x="${bx+bw/2}" y="${base+16}" text-anchor="middle" style="fill:var(--mut)" font-size="10.5" font-weight="700">${x.t.replace('Bloco ','B')}</text>`;});
+ const list=B.map(x=>`<div class="pgrow ${x.k===curBlock?'cur':''}"><span class="pgb">${x.t}</span><span class="pgv">${x.s}×${x.r}</span><span class="pgv">RPE ${x.rpe}</span><span class="pgl">${x.l}</span></div>`).join('');
  return `<h4 class="blk">Progressão ao longo do ciclo</h4>
-  <table><thead><tr><th>Bloco</th><th>Séries</th><th>Reps</th><th>RPE</th><th>Carga</th></tr></thead><tbody>${rows}</tbody></table>
-  <div class="breath" style="margin-top:12px"><span class="ic"></span><div class="t"><b>Sobrecarga:</b> topo da faixa de reps no RPE alvo em 2 sessões seguidas → tronco +2,5 kg · perna +5 kg · acessórios: + reps.</div></div>`;
+  <div class="pgchart"><svg viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="xMidYMid meet">
+    <line x1="8" y1="${base}" x2="${W-8}" y2="${base}" style="stroke:var(--line)" stroke-width="1"/>${bars}</svg>
+    <div class="pgcap">Séries por bloco — o bloco atual está realçado</div></div>
+  <div class="pglist">${list}</div>
+  <div class="breath" style="margin-top:12px"><div class="t"><b>Sobrecarga:</b> topo da faixa de reps no RPE alvo em 2 sessões seguidas → tronco +2,5 kg · perna +5 kg · acessórios: + reps.</div></div>`;
 }
 function renderRest(d){
  renderBlockBar(false);
@@ -1146,7 +1203,7 @@ function renderRest(d){
     <div class="reco"><div class="i"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#7c8cff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="4" r="1.7"/><path d="M12 6v6M12 12l-3 6M12 12l3 6M8 9h8"/></svg></div><div class="t">Mobilidade</div><div class="s">Alongamento suave de anca e coluna, sem forçar.</div></div>
     <div class="reco"><div class="i"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#7c8cff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3s6 6.4 6 11a6 6 0 0 1-12 0c0-4.6 6-11 6-11Z"/></svg></div><div class="t">Hidratar & dormir</div><div class="s">Água e boas 7–8 h de sono maximizam a recuperação.</div></div>
    </div>
-   <div class="fillslot">Espaço para notas do dia (energia, sono, dores) — a preencher.</div>
+   <div class="restnote"><div class="log-h">Notas do dia <span>guarda automaticamente</span></div><textarea class="lnote" placeholder="Como te sentes? Energia, sono, dores, humor…" oninput="onRestNote(this.value)">${(STATE.restNote||'').replace(/</g,'&lt;')}</textarea></div>
   </div>`;
 }
 function toggle(i){openCard=openCard===i?null:i;renderDay();}
