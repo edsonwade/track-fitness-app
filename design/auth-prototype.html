@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Fitness Gym Vanilson · Sign in / Sign up</title>
+<style>
+/* ============================================================
+   TOKENS — palette taken from the reference (near-black + orange)
+   ============================================================ */
+:root{
+  --stage1:#1a1e24; --stage2:#2b333d; --stage3:#7d8794;
+  --scr:#121316; --scr2:#0d0e10;
+  --txt:#ffffff; --mut:#8b8f96; --mut2:#6e727a;
+  --line:rgba(255,255,255,.22); --line2:rgba(255,255,255,.10);
+  --o1:#ffa76b; --o2:#ff8447; --orange:#ff8a4c;
+  --err:#ff5c6a; --ok:#3ddc97;
+  --fig:rgba(255,255,255,.13);
+  --r-pill:999px; --dur:.22s; --ease:cubic-bezier(.2,.85,.25,1);
+  --bar:rgba(255,255,255,.85);
+}
+:root[data-theme="light"]{
+  --stage1:#e9ecf1; --stage2:#dfe4ec; --stage3:#c3cad6;
+  --scr:#f7f8fa; --scr2:#eef0f4;
+  --txt:#14161a; --mut:#767b85; --mut2:#9aa0aa;
+  --line:rgba(0,0,0,.20); --line2:rgba(0,0,0,.08);
+  --fig:rgba(0,0,0,.10); --bar:rgba(0,0,0,.6);
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{min-height:100%}
+body{font-family:'Segoe UI',-apple-system,BlinkMacSystemFont,Roboto,sans-serif;
+  background:linear-gradient(180deg,var(--stage1) 0%,var(--stage2) 68%,var(--stage3) 100%);
+  color:var(--txt);-webkit-font-smoothing:antialiased;min-height:100vh;
+  transition:background .35s ease,color .35s ease}
+
+/* review scaffold */
+.review{position:fixed;top:0;left:0;right:0;z-index:99;display:flex;align-items:center;gap:12px;
+  padding:9px 14px;background:rgba(0,0,0,.35);backdrop-filter:blur(12px);border-bottom:1px solid var(--line2);font-size:12px}
+:root[data-theme="light"] .review{background:rgba(255,255,255,.6)}
+.review .tag{font-weight:700;color:var(--mut);display:flex;align-items:center;gap:7px}
+.review .dot{width:8px;height:8px;border-radius:50%;background:var(--orange);box-shadow:0 0 8px rgba(255,138,76,.7)}
+.review .grp{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+.rbtn{border:1px solid var(--line);background:transparent;color:var(--txt);font-size:11.5px;font-weight:700;
+  padding:7px 12px;border-radius:var(--r-pill);cursor:pointer;transition:var(--dur);font-family:inherit}
+.rbtn:hover{border-color:var(--orange);color:var(--orange)}
+.rbtn b{color:var(--orange)}
+
+/* ============================================================
+   PHONE FRAMES
+   ============================================================ */
+.frames{display:flex;gap:44px;align-items:center;justify-content:center;flex-wrap:wrap;
+  padding:76px 24px 56px;min-height:100vh}
+.phone{position:relative;width:300px;height:620px;border-radius:38px;background:var(--scr);overflow:hidden;
+  box-shadow:0 40px 90px -30px rgba(0,0,0,.85), 0 0 0 1px var(--line2);
+  display:flex;flex-direction:column;animation:up .6s var(--ease) both}
+@keyframes up{from{opacity:0;transform:translateY(26px)}to{opacity:1;transform:none}}
+.figbg{position:absolute;inset:0;overflow:hidden;pointer-events:none}
+.figbg svg{position:absolute;left:50%;top:46%;transform:translate(-50%,-50%) scale(1.5);
+  width:230px;filter:blur(16px);opacity:.9}
+.figbg::after{content:'';position:absolute;inset:0;
+  background:radial-gradient(75% 55% at 50% 42%, transparent 0%, var(--scr2) 88%)}
+.home{position:absolute;bottom:9px;left:50%;transform:translateX(-50%);width:104px;height:4px;border-radius:99px;background:var(--bar);opacity:.85}
+
+.scr{position:relative;z-index:2;flex:1;display:flex;flex-direction:column;padding:40px 26px 30px;overflow-y:auto}
+.scr::-webkit-scrollbar{width:0}
+
+/* language switcher (inside the screen, pre-login) */
+.lang{position:absolute;top:14px;right:16px;z-index:5;display:flex;border:1px solid var(--line);
+  border-radius:var(--r-pill);overflow:hidden}
+.lang button{border:0;background:transparent;color:var(--mut);font-size:9.5px;font-weight:800;letter-spacing:.09em;
+  padding:5px 9px;cursor:pointer;transition:var(--dur);font-family:inherit}
+.lang button.on{background:var(--orange);color:#fff}
+
+/* wordmark */
+.mark{text-align:center;margin-bottom:32px}
+.mark .m2{font-size:24px;letter-spacing:.01em;font-weight:600;color:var(--txt);
+  display:inline-flex;align-items:flex-start;line-height:1.1}
+.stitle{text-align:center;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--mut);margin:-20px 0 24px;font-weight:600}
+
+/* inputs */
+.fld{margin-bottom:14px}
+.ii{position:relative;display:flex;align-items:center}
+.ii .lic{position:absolute;left:16px;width:17px;height:17px;color:var(--mut);pointer-events:none;transition:var(--dur)}
+.ii input{width:100%;height:46px;background:transparent;border:1px solid var(--line);border-radius:var(--r-pill);
+  padding:0 42px 0 44px;color:var(--txt);font-size:13.5px;font-weight:500;outline:none;transition:var(--dur);font-family:inherit}
+.ii input::placeholder{color:var(--mut)}
+.ii input:focus{border-color:var(--orange)}
+.fld:focus-within .lic{color:var(--orange)}
+.eye{position:absolute;right:10px;width:28px;height:28px;border:0;border-radius:50%;background:transparent;
+  color:var(--mut);cursor:pointer;display:grid;place-items:center;transition:var(--dur)}
+.eye:hover{color:var(--txt)}
+.fld.bad .ii input{border-color:var(--err)}
+.ferr{font-size:10.5px;color:var(--err);font-weight:600;padding:5px 16px 0;max-height:0;overflow:hidden;transition:max-height .2s}
+.fld.bad .ferr{max-height:26px}
+
+.pw-str{display:flex;gap:4px;padding:0 16px;margin:-8px 0 12px}
+.pw-str i{height:3px;flex:1;border-radius:99px;background:var(--line2);transition:var(--dur)}
+.pw-str[data-lv="1"] i:nth-child(1){background:var(--err)}
+.pw-str[data-lv="2"] i:nth-child(-n+2){background:#ffbe4d}
+.pw-str[data-lv="3"] i:nth-child(-n+3){background:var(--o1)}
+.pw-str[data-lv="4"] i{background:var(--ok)}
+
+.cta{width:100%;height:46px;margin-top:12px;border:0;border-radius:var(--r-pill);cursor:pointer;
+  background:linear-gradient(180deg,var(--o1),var(--o2));color:#fff;
+  font-size:12px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;font-family:inherit;
+  box-shadow:0 12px 26px -12px rgba(255,132,71,.9);transition:var(--dur)}
+.cta:hover{filter:brightness(1.06)}
+.cta:active{transform:scale(.985)}
+
+.helpers{margin-top:20px;text-align:center;display:flex;flex-direction:column;gap:9px}
+.helpers .h{font-size:11.5px;color:var(--txt);font-weight:600}
+.helpers .h.dim{color:var(--mut);font-weight:500}
+.lnk{color:var(--orange);font-weight:700;background:none;border:0;cursor:pointer;font-size:inherit;font-family:inherit;padding:0}
+.lnk:hover{text-decoration:underline}
+.msg{margin-top:14px;font-size:11px;text-align:center;font-weight:600;min-height:15px;line-height:1.45}
+.msg.err{color:var(--err)} .msg.ok{color:var(--ok)}
+
+.caption{width:100%;text-align:center;font-size:11px;color:var(--mut);letter-spacing:.14em;
+  text-transform:uppercase;font-weight:700;margin-top:16px}
+:focus-visible{outline:2px solid var(--orange);outline-offset:2px}
+@media(max-width:1000px){ .frames{gap:28px;padding:74px 16px 40px} .phone{width:288px;height:600px} }
+</style>
+</head>
+<body>
+
+<div class="review">
+  <span class="tag"><span class="dot"></span>Prototype · Sign in / Sign up</span>
+  <div class="grp">
+    <button class="rbtn" onclick="toggleTheme()"><span data-t="rTheme">Theme</span>: <b id="tState">Dark</b></button>
+    <button class="rbtn" data-t="rValid" onclick="demoError()">Show validation</button>
+    <button class="rbtn" data-t="rClear" onclick="resetAll()">Clear</button>
+  </div>
+</div>
+
+<div class="frames">
+
+  <!-- ============ SIGN IN ============ -->
+  <div>
+  <div class="phone">
+    <div class="figbg">
+      <svg viewBox="0 0 200 300" aria-hidden="true"><g fill="var(--fig)">
+        <circle cx="100" cy="46" r="26"/>
+        <path d="M62 84c10-8 24-12 38-12s28 4 38 12c14 9 20 24 22 42l6 60c1 9-5 15-14 15h-14l-6 78c-1 8-7 13-15 13s-14-5-15-13l-4-58h-4l-4 58c-1 8-7 13-15 13s-14-5-15-13l-6-78H60c-9 0-15-6-14-15l6-60c2-18 8-33 22-42Z"/>
+      </g></svg>
+    </div>
+    <div class="lang">
+      <button id="lnPT1" onclick="setLang('pt')">PT</button>
+      <button id="lnEN1" class="on" onclick="setLang('en')">EN</button>
+    </div>
+    <div class="scr">
+      <div class="mark"><div class="m2">Vanilson Workout</div></div>
+      <div class="stitle" data-t="signin">Sign in</div>
+
+      <div class="fld" id="fLE">
+        <div class="ii">
+          <svg class="lic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5.5" width="18" height="13" rx="3"/><path d="M4 8.5l8 5.5 8-5.5"/></svg>
+          <input id="liEmail" type="email" autocomplete="username" data-p="ph_email" placeholder="Your email" oninput="clr('fLE')">
+        </div>
+        <div class="ferr" data-t="e_email">Enter a valid email.</div>
+      </div>
+
+      <div class="fld" id="fLP">
+        <div class="ii">
+          <svg class="lic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="4.5" y="10.5" width="15" height="9.5" rx="3"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></svg>
+          <input id="liPw" type="password" autocomplete="current-password" data-p="ph_pw" placeholder="Password" oninput="clr('fLP')">
+          <button class="eye" type="button" data-a="a_eye" aria-label="Show password" onclick="eye('liPw',this)"></button>
+        </div>
+        <div class="ferr" data-t="e_pwreq">Enter your password.</div>
+      </div>
+
+      <button class="cta" data-t="signin" onclick="doLogin()">Sign in</button>
+
+      <div class="helpers">
+        <div class="h" data-t="forgot">Forgot your password?</div>
+        <div class="h dim"><span data-t="noacc">Don't have an account?</span> <button class="lnk" data-t="signup" onclick="jump('up')">Sign up</button></div>
+      </div>
+      <div class="msg" id="msgL"></div>
+    </div>
+    <div class="home"></div>
+  </div>
+  <div class="caption" data-t="signin">Sign in</div>
+  </div>
+
+  <!-- ============ SIGN UP ============ -->
+  <div>
+  <div class="phone">
+    <div class="figbg">
+      <svg viewBox="0 0 200 300" aria-hidden="true"><g fill="var(--fig)">
+        <circle cx="100" cy="46" r="26"/>
+        <path d="M62 84c10-8 24-12 38-12s28 4 38 12c14 9 20 24 22 42l6 60c1 9-5 15-14 15h-14l-6 78c-1 8-7 13-15 13s-14-5-15-13l-4-58h-4l-4 58c-1 8-7 13-15 13s-14-5-15-13l-6-78H60c-9 0-15-6-14-15l6-60c2-18 8-33 22-42Z"/>
+      </g></svg>
+    </div>
+    <div class="lang">
+      <button id="lnPT2" onclick="setLang('pt')">PT</button>
+      <button id="lnEN2" class="on" onclick="setLang('en')">EN</button>
+    </div>
+    <div class="scr">
+      <div class="mark"><div class="m2">Vanilson Workout</div></div>
+      <div class="stitle" data-t="signup">Sign up</div>
+
+      <div class="fld" id="fRN">
+        <div class="ii">
+          <svg class="lic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="12" cy="8" r="3.6"/><path d="M4.8 20c0-4 3.6-6.2 7.2-6.2S19.2 16 19.2 20"/></svg>
+          <input id="rgName" type="text" autocomplete="name" data-p="ph_name" placeholder="Your name" oninput="clr('fRN')">
+        </div>
+        <div class="ferr" data-t="e_name">Enter your name.</div>
+      </div>
+
+      <div class="fld" id="fRE">
+        <div class="ii">
+          <svg class="lic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5.5" width="18" height="13" rx="3"/><path d="M4 8.5l8 5.5 8-5.5"/></svg>
+          <input id="rgEmail" type="email" autocomplete="email" data-p="ph_email" placeholder="Your email" oninput="clr('fRE')">
+        </div>
+        <div class="ferr" id="rgEmailErr" data-t="e_email">Enter a valid email.</div>
+      </div>
+
+      <div class="fld" id="fRP">
+        <div class="ii">
+          <svg class="lic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="4.5" y="10.5" width="15" height="9.5" rx="3"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></svg>
+          <input id="rgPw" type="password" autocomplete="new-password" data-p="ph_pw" placeholder="Password" oninput="onPw()">
+          <button class="eye" type="button" data-a="a_eye" aria-label="Show password" onclick="eye('rgPw',this)"></button>
+        </div>
+        <div class="ferr" data-t="e_pwrule">Min. 8 characters, with a letter, a number and a symbol.</div>
+      </div>
+      <div class="pw-str" id="pwStr" data-lv="0"><i></i><i></i><i></i><i></i></div>
+
+      <div class="fld" id="fRP2">
+        <div class="ii">
+          <svg class="lic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="4.5" y="10.5" width="15" height="9.5" rx="3"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/><path d="M10 15.2l1.6 1.6 2.8-2.8"/></svg>
+          <input id="rgPw2" type="password" autocomplete="new-password" data-p="ph_pw2" placeholder="Confirm password" oninput="clr('fRP2')">
+        </div>
+        <div class="ferr" data-t="e_match">Passwords do not match.</div>
+      </div>
+
+      <button class="cta" data-t="createacc" onclick="doReg()">Create account</button>
+
+      <div class="helpers">
+        <div class="h dim"><span data-t="haveacc">Already have an account?</span> <button class="lnk" data-t="signin" onclick="jump('in')">Sign in</button></div>
+      </div>
+      <div class="msg" id="msgR"></div>
+    </div>
+    <div class="home"></div>
+  </div>
+  <div class="caption" data-t="signup">Sign up</div>
+  </div>
+
+</div>
+
+<script>
+/* ============ i18n ============ */
+const T={
+  en:{signin:"Sign in",signup:"Sign up",createacc:"Create account",
+    forgot:"Forgot your password?",noacc:"Don't have an account?",haveacc:"Already have an account?",
+    ph_email:"Your email",ph_pw:"Password",ph_name:"Your name",ph_pw2:"Confirm password",
+    a_eye:"Show password",
+    e_email:"Enter a valid email.",e_pwreq:"Enter your password.",e_name:"Enter your name.",
+    e_pwrule:"Min. 8 characters, with a letter, a number and a symbol.",
+    e_match:"Passwords do not match.",e_realmail:"Use a real email (Gmail, Outlook, iCloud, Yahoo…).",
+    g_check:"Check the highlighted fields.",g_signing:"Signing in… (demo — no backend in this prototype)",
+    g_created:"Account created! Now sign in. (demo)",
+    rTheme:"Theme",rValid:"Show validation",rClear:"Clear",dark:"Dark",light:"Light",
+    jin:"→ Go to the Sign in screen",jup:"→ Go to the Sign up screen"},
+  pt:{signin:"Entrar",signup:"Criar conta",createacc:"Criar conta",
+    forgot:"Esqueceste a palavra-passe?",noacc:"Não tens conta?",haveacc:"Já tens conta?",
+    ph_email:"O teu email",ph_pw:"Palavra-passe",ph_name:"O teu nome",ph_pw2:"Confirmar palavra-passe",
+    a_eye:"Mostrar palavra-passe",
+    e_email:"Escreve um email válido.",e_pwreq:"Escreve a tua palavra-passe.",e_name:"Escreve o teu nome.",
+    e_pwrule:"Mín. 8 caracteres, com letra, número e símbolo.",
+    e_match:"As palavras-passe não coincidem.",e_realmail:"Usa um email real (Gmail, Outlook, iCloud, Yahoo…).",
+    g_check:"Verifica os campos assinalados.",g_signing:"A entrar… (demo — sem backend no protótipo)",
+    g_created:"Conta criada! Agora faz Entrar. (demo)",
+    rTheme:"Tema",rValid:"Ver validação",rClear:"Limpar",dark:"Escuro",light:"Claro",
+    jin:"→ Vai para o ecrã Entrar",jup:"→ Vai para o ecrã Criar conta"}
+};
+let LANG='en';
+function t(k){return T[LANG][k]||k;}
+function setLang(l){
+  LANG=l;document.documentElement.setAttribute('lang',l);
+  document.querySelectorAll('[data-t]').forEach(el=>el.textContent=t(el.dataset.t));
+  document.querySelectorAll('[data-p]').forEach(el=>el.placeholder=t(el.dataset.p));
+  document.querySelectorAll('[data-a]').forEach(el=>el.setAttribute('aria-label',t(el.dataset.a)));
+  ['1','2'].forEach(n=>{
+    document.getElementById('lnPT'+n).classList.toggle('on',l==='pt');
+    document.getElementById('lnEN'+n).classList.toggle('on',l==='en');});
+  document.getElementById('tState').textContent =
+    document.documentElement.getAttribute('data-theme')==='dark'?t('dark'):t('light');
+  msg('msgL','');msg('msgR','');
+}
+
+const EYE='<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>';
+document.querySelectorAll('.eye').forEach(b=>b.innerHTML=EYE);
+
+function toggleTheme(){
+  const d=document.documentElement.getAttribute('data-theme')==='dark';
+  document.documentElement.setAttribute('data-theme',d?'light':'dark');
+  document.getElementById('tState').textContent=d?t('light'):t('dark');}
+
+function eye(id,btn){const el=document.getElementById(id);const s=el.type==='password';
+  el.type=s?'text':'password';btn.style.color=s?'var(--orange)':'';}
+function clr(id){document.getElementById(id).classList.remove('bad');}
+function bad(id){document.getElementById(id).classList.add('bad');}
+function msg(id,x,k){const e=document.getElementById(id);e.textContent=x||'';e.className='msg'+(k?' '+k:'');}
+function jump(w){alert(w==='in'?t('jin'):t('jup'));}
+
+const EMAIL_OK=['gmail.com','googlemail.com','outlook.com','outlook.pt','hotmail.com','hotmail.pt','live.com','live.pt','msn.com','icloud.com','me.com','mac.com','yahoo.com','yahoo.pt','ymail.com','proton.me','protonmail.com','pm.me','sapo.pt','gmx.com','gmx.net','aol.com','zoho.com'];
+const RE=/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+function pwLevel(p){let n=0;if((p||'').length>=8)n++;if(/[A-Za-z]/.test(p))n++;if(/[0-9]/.test(p))n++;if(/[^A-Za-z0-9]/.test(p))n++;return n;}
+function onPw(){clr('fRP');document.getElementById('pwStr').setAttribute('data-lv',pwLevel(document.getElementById('rgPw').value));}
+
+function doLogin(){
+  msg('msgL','');['fLE','fLP'].forEach(clr);
+  const em=document.getElementById('liEmail').value.trim(),pw=document.getElementById('liPw').value;
+  let ok=true;
+  if(!RE.test(em)){bad('fLE');ok=false;}
+  if(!pw){bad('fLP');ok=false;}
+  if(!ok){msg('msgL',t('g_check'),'err');return;}
+  msg('msgL',t('g_signing'),'ok');
+}
+function doReg(){
+  msg('msgR','');['fRN','fRE','fRP','fRP2'].forEach(clr);
+  const nm=document.getElementById('rgName').value.trim();
+  const em=document.getElementById('rgEmail').value.trim().toLowerCase();
+  const pw=document.getElementById('rgPw').value,p2=document.getElementById('rgPw2').value;
+  const ee=document.getElementById('rgEmailErr');
+  let ok=true;
+  if(!nm){bad('fRN');ok=false;}
+  if(!RE.test(em)){bad('fRE');ee.textContent=t('e_email');ok=false;}
+  else if(EMAIL_OK.indexOf(em.split('@')[1])<0){bad('fRE');ee.textContent=t('e_realmail');ok=false;}
+  if(pwLevel(pw)<4){bad('fRP');ok=false;}
+  if(!p2||pw!==p2){bad('fRP2');ok=false;}
+  if(!ok){msg('msgR',t('g_check'),'err');return;}
+  msg('msgR',t('g_created'),'ok');
+}
+function demoError(){
+  bad('fLE');msg('msgL',t('g_check'),'err');
+  bad('fRN');bad('fRE');document.getElementById('rgEmailErr').textContent=t('e_email');
+  bad('fRP2');document.getElementById('rgPw').value='abc';onPw();bad('fRP');
+  msg('msgR',t('g_check'),'err');
+}
+function resetAll(){
+  ['fLE','fLP','fRN','fRE','fRP','fRP2'].forEach(clr);
+  ['liEmail','liPw','rgName','rgEmail','rgPw','rgPw2'].forEach(i=>document.getElementById(i).value='');
+  document.getElementById('pwStr').setAttribute('data-lv',0);
+  msg('msgL','');msg('msgR','');
+}
+setLang('en');
+</script>
+</body>
+</html>
