@@ -1,0 +1,131 @@
+/* =========================================================================
+   gate.css — the sign-in / register screen.
+
+   Ported from the pre-redesign gate with its layout, spacing, copy hooks and
+   validation classes UNCHANGED. Two deliberate changes only:
+     1. accent retuned from orange (#ff8a4c) to the app's lime, so the gate and
+        the app read as one product;
+     2. the blurred vector figure behind the card is now a real photograph.
+
+   Every rule stays scoped under #gate or a gate-only class (.gmark, .glang,
+   .atg, .acta, .ghelp, .pwstr, .gfig) so nothing can leak into the app.
+
+   NOTE: .gate-btn used to be shared with the exercise modal's Save button.
+   The rebuilt modal uses .btn--acc, so .gate-btn is now gate-only and this
+   file is free to change it. (It previously referenced --grad, a token that
+   no longer exists.)
+   ========================================================================= */
+
+#gate{
+  /* gate-local accent. Two tokens for the same reason the app has two:
+     lime as a FILL needs dark text on it, and lime as TEXT must darken on a
+     light background or it is unreadable. */
+  --g-acc:#d9ff47;                 /* fill */
+  --g-acc-2:#c4ee23;               /* fill, gradient end */
+  --g-on-acc:#0b0f02;              /* text on fill */
+  --g-acc-ink:#c8e832;             /* lime as text, on the dark gate */
+  --g-surface:#121316;
+  --g-ink:#ffffff;
+  --g-ink-2:#8b8f96;
+  --g-line:rgba(255,255,255,.22);
+  --g-bad:#ff5c6a;
+}
+[data-theme="light"] #gate{
+  --g-acc-ink:#4a6b00;             /* darkened so it passes contrast on white */
+  --g-surface:#f7f8fa;
+  --g-ink:#14161a;
+  --g-line:rgba(0,0,0,.2);
+}
+
+.gate{position:fixed;inset:0;z-index:300;display:flex;align-items:center;justify-content:center;
+  padding:20px;overflow:hidden;background:var(--g-surface)}
+
+/* generic gate button (gate-only since the redesign) */
+.gate-btn{width:100%;padding:14px;border:0;border-radius:13px;font-size:15px;font-weight:800;cursor:pointer;
+  margin-top:6px;background:linear-gradient(180deg,var(--g-acc),var(--g-acc-2));color:var(--g-on-acc);
+  box-shadow:0 12px 26px -12px rgba(196,238,35,.75);transition:.15s;
+  display:flex;align-items:center;justify-content:center;gap:8px;font-family:inherit}
+.gate-btn:hover{filter:brightness(1.06)}
+.gate-btn:active{transform:scale(.98)}
+.gate-btn .arw{transition:.2s}.gate-btn:hover .arw{transform:translateX(4px)}
+
+/* ---- photographic background (replaces the old blurred vector figure) ---- */
+.gfig{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.gfig img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
+  transform:scale(1.08);filter:blur(2px) saturate(.9);opacity:.5}
+[data-theme="light"] .gfig img{opacity:.28;filter:blur(2px) saturate(.85)}
+.gfig::after{content:'';position:absolute;inset:0;
+  background:radial-gradient(78% 58% at 50% 40%,
+    color-mix(in srgb,var(--g-surface) 45%,transparent) 0%,
+    var(--g-surface) 86%)}
+
+/* ---- language selector ---- */
+.glang{position:absolute;top:16px;right:16px;z-index:3;display:flex;
+  border:1px solid var(--g-line);border-radius:999px;overflow:hidden}
+.glang button{border:0;background:transparent;color:var(--g-ink-2);font-size:10px;font-weight:800;
+  letter-spacing:.09em;padding:6px 11px;cursor:pointer;transition:.18s;font-family:inherit}
+.glang button.on{background:var(--g-acc);color:var(--g-on-acc)}
+
+/* ---- auth card ---- */
+.auth{width:100%;max-width:380px;position:relative;z-index:1;
+  animation:authIn .5s cubic-bezier(.2,.85,.25,1) both}
+@keyframes authIn{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:none}}
+.gmark{text-align:center;margin-bottom:26px}
+.gmark .m2{font-size:27px;letter-spacing:.01em;font-weight:600;color:var(--g-ink);
+  display:inline-flex;align-items:flex-start;line-height:1.1}
+.gmark .m2 b{font-family:'Anton',inherit;font-weight:400;text-transform:uppercase;
+  letter-spacing:-.01em}
+
+.auth-toggle{display:flex;border:1px solid var(--g-line);border-radius:999px;padding:4px;margin-bottom:22px;gap:4px}
+.atg{flex:1;padding:10px;border:0;border-radius:999px;background:transparent;color:var(--g-ink-2);font-weight:800;
+  font-size:11.5px;letter-spacing:.09em;text-transform:uppercase;cursor:pointer;transition:.18s;font-family:inherit}
+.atg.on{background:linear-gradient(180deg,var(--g-acc),var(--g-acc-2));color:var(--g-on-acc);
+  box-shadow:0 8px 20px -10px rgba(196,238,35,.8)}
+
+.apanel{display:flex;flex-direction:column;animation:panelIn .3s ease both}
+@keyframes panelIn{from{opacity:0;transform:translateY(8px)}to{opacity:1}}
+.auth[data-view="login"] .ap-reg{display:none}
+.auth[data-view="register"] .ap-login{display:none}
+
+/* ---- fields (validation classes unchanged: .fld / .bad / .ferr) ---- */
+#gate .fld{display:flex;flex-direction:column;margin-bottom:13px}
+#gate .ii{position:relative;display:flex;align-items:center}
+#gate .ii .ic{position:absolute;left:16px;width:17px;height:17px;color:var(--g-ink-2);pointer-events:none;transition:.15s}
+#gate .ii input{width:100%;height:48px;background:transparent;border:1px solid var(--g-line);
+  border-radius:999px;padding:0 44px 0 45px;color:var(--g-ink);font-size:16px;font-weight:500;outline:none;
+  transition:.18s;font-family:inherit}
+#gate .ii input::placeholder{color:var(--g-ink-2)}
+#gate .ii input:focus{border-color:var(--g-acc-ink)}
+#gate .fld:focus-within .ic{color:var(--g-acc-ink)}
+#gate .eye{position:absolute;right:11px;width:28px;height:28px;border:0;border-radius:50%;background:transparent;
+  color:var(--g-ink-2);cursor:pointer;display:grid;place-items:center;transition:.15s}
+#gate .eye:hover{color:var(--g-ink)}
+#gate .fld.bad .ii input{border-color:var(--g-bad)}
+#gate .ferr{font-size:10.5px;color:var(--g-bad);font-weight:600;padding:5px 17px 0;max-height:0;overflow:hidden;transition:max-height .2s}
+#gate .fld.bad .ferr{max-height:30px}
+
+/* ---- password strength ramp: weak -> strong ---- */
+.pwstr{display:flex;gap:4px;padding:0 17px;margin:-6px 0 12px}
+.pwstr i{height:3px;flex:1;border-radius:99px;background:rgba(255,255,255,.12);transition:.2s}
+[data-theme="light"] .pwstr i{background:rgba(0,0,0,.1)}
+.pwstr[data-lv="1"] i:nth-child(1){background:#ff5c6a}
+.pwstr[data-lv="2"] i:nth-child(-n+2){background:#ffbe4d}
+.pwstr[data-lv="3"] i:nth-child(-n+3){background:#b9e02a}
+.pwstr[data-lv="4"] i{background:#3ddc97}
+.gate-hint{font-size:10.5px;color:var(--g-ink-2);margin:-4px 17px 12px}
+
+/* ---- primary CTA ---- */
+.acta{width:100%;height:48px;margin-top:12px;border:0;border-radius:999px;cursor:pointer;font-family:inherit;
+  background:linear-gradient(180deg,var(--g-acc),var(--g-acc-2));color:var(--g-on-acc);
+  font-size:12px;font-weight:800;letter-spacing:.2em;text-transform:uppercase;
+  box-shadow:0 12px 26px -12px rgba(196,238,35,.8);transition:.18s}
+.acta:hover{filter:brightness(1.06)}
+.acta:active{transform:scale(.985)}
+
+/* ---- helper links ---- */
+.ghelp{margin-top:18px;text-align:center;display:flex;flex-direction:column;gap:9px}
+.ghelp .h{font-size:11.5px;color:var(--g-ink);font-weight:600}
+.ghelp .h.dim{color:var(--g-ink-2);font-weight:500}
+.ghelp a{color:var(--g-acc-ink);font-weight:700;cursor:pointer}
+.ghelp a:hover{text-decoration:underline}
+.gate-msg{font-size:12px;color:var(--g-bad);margin-top:16px;min-height:16px;text-align:center;line-height:1.45;font-weight:600}
