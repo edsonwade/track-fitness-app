@@ -1,0 +1,116 @@
+# Maven target directories
+target/
+**/target/
+
+### STS ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+
+### IntelliJ IDEA ###
+.idea
+*.iws
+*.iml
+*.ipr
+.idea/sonarlint
+.idea/sonarlint/securityhotspotstore/index.pb
+.idea/sonarlint/issuestore/index.pb
+backend/customer-service/src/main/java/code/with/vanilson/customerservice/MongoConfig.java
+.idea/**
+.playwright-mcp/**
+.qodo/**
+.env
+/.env
+.env.*
+
+.env.example
+/.env.example
+.env.example.*
+
+# Ignore docker-compose-not-work directory
+docker-compose-not-work/
+
+# Ignore endpoints directory
+endpoints/
+
+# Ignore sheets directory
+sheets/
+
+# Deploy proof / stack logs — never commit
+deploy-proof*.log
+**/deploy-proof*.log
+*.deploy.log
+
+# Documentation directory — internal only
+docs/
+/docs/**
+
+# Documentation and AI-related files
+.claude/
+CLAUDE.md
+Skills.md
+Claude.md
+Skill.md
+/notes/
+/diagramas/
+**/*.jar
+**/*.war
+notes/
+.playwright-mcp
+.qodo
+
+graphify-out/
+/graphify-out/**
+
+diagramas/
+
+screenshots/
+scripts/
+
+qa-admin-dashboard.png
+qa-product-service.png
+qa-tenant-context.png
+qa-configuration-service.png
+qa-authentication-service.png
+qa-customer-service.png
+qa-retest-catalog-2.png
+qa-retest-catalog-1.png
+qa-retest-homepage.png
+qa-login-page.png
+qa-login.png
+qa-logout.png
+qa-homepage-after-wait.png
+qa-homepage-before-wait.png
+qa-homepage.png
+qa-seller-dashboard.png
+qa-seller-dashboard-after-wait.png
+qa-seller-dashboard-before-wait.png
+qa-dark-mode.png
+qa-light-mode.png
+qa-admin-users-tab.png
+qa-admin-users-tab-after-wait.png
+qa-admin-users-tab-before-wait.png
+
+
+
+
+../configuration-service/data
+
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+build/
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+### VS Code ###
+.vscode/
+.worktrees/

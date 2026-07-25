@@ -1,0 +1,225 @@
+/* =========================================================================
+   tokens.css — the design system's vocabulary. No components here.
+
+   Rules that keep the two themes honest:
+   1. Components never use a literal colour. Only var(--…).
+   2. The accent is TWO tokens, not one. --acc-fill is the bright lime used as
+      a background (always with --acc-on-fill text on top). --acc is the lime
+      used for text, icons and borders, and it is DARKENED in the light theme
+      because bright lime on white is unreadable. Using --acc-fill as a text
+      colour is a bug.
+   ========================================================================= */
+
+/* ---- typefaces (local, no CDN, works offline) ----
+   Anton and Archivo are both SIL Open Font License 1.1 — see fonts/README.md */
+@font-face{
+  font-family:'Archivo';
+  src:url('../fonts/archivo-var.woff2') format('woff2-variations'),
+      url('../fonts/archivo-var.woff2') format('woff2');
+  font-weight:400 800; font-style:normal; font-display:swap;
+}
+@font-face{
+  font-family:'Anton';
+  src:url('../fonts/anton.woff2') format('woff2');
+  font-weight:400; font-style:normal; font-display:swap;
+}
+
+:root{
+  /* ---------- type ---------- */
+  --f-display:'Anton','Archivo',system-ui,sans-serif;
+  --f-ui:'Archivo',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+
+  /* Fluid display sizes. Numerals and screen titles carry this design, so the
+     top end is deliberately large even on a phone. */
+  --t-hero:clamp(2.6rem, 11vw, 4.4rem);
+  --t-xxl:clamp(2rem, 8vw, 3rem);
+  --t-xl:clamp(1.5rem, 6vw, 2rem);
+  --t-lg:1.25rem;
+  --t-md:1rem;
+  --t-sm:.875rem;
+  --t-xs:.78125rem;
+  --t-xxs:.6875rem;
+
+  --lh-tight:1.02;   /* display: numbers and titles */
+  --lh-snug:1.25;
+  --lh-body:1.55;
+
+  --tr-display:-.02em;  /* Anton needs negative tracking at large sizes */
+  --tr-caps:.14em;      /* small uppercase labels need the opposite */
+
+  /* ---------- space (4px base) ---------- */
+  --s1:.25rem; --s2:.5rem;  --s3:.75rem; --s4:1rem;
+  --s5:1.25rem; --s6:1.5rem; --s8:2rem;  --s10:2.5rem; --s12:3rem;
+
+  /* ---------- radii ---------- */
+  --r-sm:.625rem; --r-md:1rem; --r-lg:1.375rem; --r-xl:1.75rem; --r-pill:999px;
+
+  /* ---------- motion ---------- */
+  --e-out:cubic-bezier(.22,1,.36,1);
+  --e-in-out:cubic-bezier(.65,0,.35,1);
+  --d-fast:140ms; --d-mid:220ms; --d-slow:380ms;
+
+  /* ---------- layout ---------- */
+  /* Phone-first: the gym is the real use case. On desktop the column widens
+     only a little and stays centred — a deliberate single column reads as
+     designed, whereas stretching it to 1024px reads as an unfinished phone
+     layout. */
+  --app-max:34rem;
+  --app-max-wide:44rem;
+  --tabbar-h:4.5rem;
+  --safe-b:env(safe-area-inset-bottom,0px);
+
+  /* ---------- z ---------- */
+  --z-tabbar:60; --z-sheet:80; --z-toast:90; --z-gate:100;
+}
+
+/* =========================================================================
+   DARK  (default)
+   Layered near-blacks rather than one flat black — depth is what separates
+   a premium surface from a cheap one.
+   ========================================================================= */
+:root,
+[data-theme="dark"]{
+  color-scheme:dark;
+
+  --bg:#08090b;
+  --surface-1:#0f1114;
+  --surface-2:#161a1f;
+  --surface-3:#1e232a;
+  --surface-inv:#f4f6f2;
+
+  --line:rgba(255,255,255,.075);
+  --line-strong:rgba(255,255,255,.14);
+
+  /* --ink-3 carries small uppercase labels, so it must clear 4.5:1 against
+     --surface-1, not merely look subdued. Measured 5.62:1. */
+  --ink:#f3f5f0;
+  --ink-2:#a8b0ac;
+  --ink-3:#868e89;
+  --ink-on-inv:#0b0d0a;
+
+  /* accent — bright lime reads well as text on near-black */
+  --acc:#d9ff47;
+  --acc-fill:#d9ff47;
+  --acc-on-fill:#0b0f02;
+  --acc-soft:rgba(217,255,71,.13);
+  --acc-line:rgba(217,255,71,.32);
+
+  --pos:#3ddc97;
+  --neg:#ff5d6c;
+  --warn:#ffc24b;
+
+  /* photography: text sits ON the image, so the scrim must be strong */
+  --scrim:linear-gradient(to top,rgba(4,5,6,.94) 0%,rgba(4,5,6,.72) 38%,rgba(4,5,6,.12) 72%,rgba(4,5,6,0) 100%);
+  --scrim-soft:linear-gradient(to top,rgba(4,5,6,.8),rgba(4,5,6,.1));
+  --media-bg:#14171b;
+
+  --shadow-1:0 1px 2px rgba(0,0,0,.5);
+  --shadow-2:0 8px 24px -12px rgba(0,0,0,.8);
+  --shadow-3:0 24px 60px -28px rgba(0,0,0,.9);
+  --glow-acc:0 8px 30px -10px rgba(217,255,71,.35);
+}
+
+/* =========================================================================
+   LIGHT
+   Warm off-whites, not inverted greys. The accent splits: bright lime stays
+   as a FILL, while text/icon lime darkens to stay legible.
+   ========================================================================= */
+[data-theme="light"]{
+  color-scheme:light;
+
+  --bg:#f4f4f1;
+  --surface-1:#ffffff;
+  --surface-2:#fafaf7;
+  --surface-3:#f0f0ec;
+  --surface-inv:#14171a;
+
+  --line:rgba(16,20,18,.09);
+  --line-strong:rgba(16,20,18,.18);
+
+  /* Same rule as dark: measured 6.69:1 and 4.58:1 against --bg. The previous
+     #8a938d was only 2.87:1 and failed AA on every small label. */
+  --ink:#14181a;
+  --ink-2:#4f5852;
+  --ink-3:#68716b;
+  --ink-on-inv:#f6f8f4;
+
+  /* --acc is DARKENED for contrast on light surfaces (~5.4:1 on white).
+     --acc-fill stays bright so fills still read as the brand colour. */
+  --acc:#4a6b00;
+  --acc-fill:#d4fb3c;
+  --acc-on-fill:#1b2600;
+  --acc-soft:rgba(122,168,0,.14);
+  --acc-line:rgba(122,168,0,.36);
+
+  --pos:#0f8a5f;
+  --neg:#c9283c;
+  --warn:#8a6100;
+
+  /* photography: in light mode text moves OFF the image (see .pcard), so the
+     scrim only needs to seat the photo, not carry type. */
+  --scrim:linear-gradient(to top,rgba(20,24,26,.42) 0%,rgba(20,24,26,.10) 55%,rgba(20,24,26,0) 100%);
+  --scrim-soft:linear-gradient(to top,rgba(20,24,26,.25),rgba(20,24,26,0));
+  --media-bg:#e7e7e2;
+
+  --shadow-1:0 1px 2px rgba(20,30,25,.06);
+  --shadow-2:0 10px 26px -14px rgba(20,30,25,.22);
+  --shadow-3:0 26px 60px -30px rgba(20,30,25,.3);
+  --glow-acc:0 8px 26px -12px rgba(122,168,0,.4);
+}
+
+/* =========================================================================
+   base
+   ========================================================================= */
+*,*::before,*::after{box-sizing:border-box}
+*{margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+
+html{-webkit-text-size-adjust:100%}
+
+body{
+  font-family:var(--f-ui);
+  font-size:var(--t-md);
+  line-height:var(--lh-body);
+  background:var(--bg);
+  color:var(--ink);
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+  font-synthesis-weight:none;
+  transition:background var(--d-slow) var(--e-out),color var(--d-slow) var(--e-out);
+  overflow-x:hidden;
+}
+
+img{max-width:100%;display:block}
+
+/* Inline icons carry no width/height attributes, so give every SVG a sane
+   default size. Component rules (.tab svg, .ring svg, …) override this. */
+svg{width:1.25em;height:1.25em;flex:0 0 auto}
+button,input,textarea,select{font:inherit;color:inherit}
+button{background:none;border:0;cursor:pointer}
+a{color:inherit;text-decoration:none}
+ol,ul{list-style:none}
+
+/* Focus: visible for keyboards, silent for taps. */
+:focus{outline:none}
+:focus-visible{outline:2px solid var(--acc);outline-offset:2px;border-radius:var(--r-sm)}
+
+::selection{background:var(--acc-fill);color:var(--acc-on-fill)}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{
+    animation-duration:.01ms!important;animation-iteration-count:1!important;
+    transition-duration:.01ms!important;scroll-behavior:auto!important;
+  }
+}
+
+/* ---- type utilities ---- */
+.u-display{font-family:var(--f-display);font-weight:400;text-transform:uppercase;
+  line-height:var(--lh-tight);letter-spacing:var(--tr-display)}
+.u-num{font-family:var(--f-display);line-height:var(--lh-tight);
+  letter-spacing:var(--tr-display);font-variant-numeric:tabular-nums}
+.u-eyebrow{font-size:var(--t-xxs);font-weight:700;text-transform:uppercase;
+  letter-spacing:var(--tr-caps);color:var(--ink-3)}
+.u-mut{color:var(--ink-2)}
+.u-acc{color:var(--acc)}
+.u-sr{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;
+  clip:rect(0 0 0 0);white-space:nowrap;border:0}
