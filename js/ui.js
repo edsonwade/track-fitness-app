@@ -124,14 +124,20 @@ function sectionHead(title, actLabel, act){
    A facade: the poster is a local photo, and nothing from YouTube is fetched
    until the user taps, so opening a day does not spin up six embeds.
 
-   On tap we build a real YouTube *Player* (IFrame API) rather than dropping in
-   a bare <iframe src="...autoplay=1">, for two reasons that both showed up in
-   testing:
-     1. play is triggered programmatically in onReady, so it does not depend on
-        the browser's autoplay policy attributing the tap to a fresh iframe;
-     2. onError fires when a video is deleted, private or has embedding
-        disabled — otherwise the user just gets a silent black rectangle with
-        no explanation, which is exactly the failure that was reported.
+   **The iframe is what plays; the IFrame API is only an observer.** It used to
+   be the other way round — `new YT.Player(div)` built the frame and the card
+   waited for `onReady` before clearing "Loading video…". That handshake is a
+   postMessage round-trip, and it does not complete in every context (a strict
+   embedded webview, a blocked third-party frame, a page opened over file://
+   where `origin` is "null"). When it does not, `onReady` never fires, `onError`
+   never fires either, and the card sits on "Loading video…" until a 10-second
+   watchdog — which reads exactly like "the video never opens", because it is.
+
+   Now the iframe is written straight into the card and the placeholder is
+   cleared on the frame's own `load` event, which fires whether or not the API
+   is reachable. The API is still attached afterwards, on the same iframe, for
+   the one thing only it can tell us: `onError`, i.e. deleted / private /
+   embedding disabled. If the API never answers, the video plays anyway.
 
    There is deliberately no outbound link anywhere in here. The video plays in
    the card, or the card explains why it cannot. It never opens a tab. */
@@ -149,10 +155,32 @@ function videoBlock(vid, poster, label){
   if(!vid){
     return `<div class="note">${ICONS.info}<div>${t('e_video_none')}</div></div>`;
   }
-  return `<div class="vplayer" data-act="playvid" data-a1="${esc(vid)}" data-a2="${esc(poster)}">
+  /* The label rides on the element because closing the video rebuilds this
+     same facade from the host's own attributes, with no re-render. */
+  return `<div class="vplayer" data-act="playvid" data-a1="${esc(vid)}" data-a2="${esc(poster)}"
+      data-label="${esc(label || '')}">
       ${videoPoster(vid, poster, label)}
-    </div>
-    <p class="vcap">${t('e_video_cap')}</p>`;
+    </div>`;
+}
+/* Video for a user-created exercise. An exercise the user typed before the video
+   field was mandatory still resolves, by the same name match that finds its
+   photo — "Cable Crossover" is a crossover whether or not a link was pasted. */
+function customVideo(c){
+  if(!c) return '';
+  if(c.vid) return c.vid;
+  const id = exIdFromText(c.name, c.eq);
+  return (id && VIDEOS[id]) || '';
+}
+/* Deliberately WITHOUT `enablejsapi`. With it, the IFrame API is allowed to
+   adopt this frame, and adopting rewrites its src to add a widget id. Closing
+   the video removes the frame while the API still holds that widget, so the
+   next open handed YouTube a widget id belonging to a frame that no longer
+   exists — and the player came up blank, on every card, until a full reload.
+   That was the "opens once, then a white box for ever" report. A plain frame
+   has no such state: every open is a first open. */
+function ytEmbedSrc(vid){
+  return 'https://www.youtube-nocookie.com/embed/' + encodeURIComponent(vid)
+    + '?autoplay=1&rel=0&modestbranding=1&playsinline=1';
 }
 function videoPoster(vid, poster, label){
   return `<img class="vplayer__poster" src="${esc(poster)}" alt="${esc(label || '')}" loading="lazy">
@@ -169,10 +197,13 @@ function videoPoster(vid, poster, label){
 let ytApi = 'idle';            /* idle | loading | ready | failed */
 const ytApiWaiting = [];
 function ensureYTApi(cb){
+  /* The script may have arrived after the timeout gave up on it. */
+  if(window.YT && window.YT.Player) ytApi = 'ready';
   if(ytApi === 'ready') return cb(null);
-  if(ytApi === 'failed') return cb(new Error('api-unavailable'));
   ytApiWaiting.push(cb);
   if(ytApi === 'loading') return;
+  /* 'failed' falls through on purpose: "Try again" has to mean a real retry,
+     not an instant replay of the last failure. */
   ytApi = 'loading';
   const flush = err => ytApiWaiting.splice(0).forEach(fn=> fn(err));
   const timer = setTimeout(()=>{ if(ytApi !== 'ready'){ ytApi = 'failed'; flush(new Error('api-timeout')); } }, 8000);
@@ -183,18 +214,412 @@ function ensureYTApi(cb){
   s.onerror = ()=>{ clearTimeout(timer); ytApi = 'failed'; flush(new Error('api-load')); };
   document.head.appendChild(s);
 }
-/* https://developers.google.com/youtube/iframe_api_reference#onError */
+/* https://developers.google.com/youtube/iframe_api_reference#onError
+   Used by the self-test, which is the only place that builds YT.Player objects
+   now. The cards play a plain iframe and never see an error code. */
 function ytErrMsg(code){
   if(code === 101 || code === 150) return t('e_video_blocked');
   if(code === 100) return t('e_video_gone');
   return t('e_video_fail');
 }
 function videoFail(host, vid, poster, msg){
+  host.classList.remove('is-playing');
   host.innerHTML = `<div class="vplayer__fail">
       <p>${esc(msg)}</p>
-      <button class="btn btn--ghost btn--sm" type="button"
-        data-act="playvid" data-a1="${esc(vid)}" data-a2="${esc(poster)}">${t('e_video_retry')}</button>
+      <div class="flexr">
+        <button class="btn btn--ghost btn--sm" type="button"
+          data-act="playvid" data-a1="${esc(vid)}" data-a2="${esc(poster)}">${t('e_video_retry')}</button>
+        <button class="btn btn--ghost btn--sm" type="button"
+          data-act="closevid">${t('e_video_close')}</button>
+      </div>
     </div>`;
+}
+
+/* ---- VIDEO SELF-TEST -----------------------------------------------------
+   data.js already states the rule: oEmbed answers 200 for a video whose owner
+   has disabled embedding, and such a video never raises onError — it simply
+   never answers, which is what leaves a card spinning. The only check that
+   counts is a real youtube-nocookie player reaching onReady, and it has to run
+   in a browser that can actually reach YouTube. That is why this lives in the
+   app instead of in a script: no tooling outside the user's own browser can
+   answer the question.
+
+   Two rules are what make the answer trustworthy:
+     * one probe at a time, spaced out — YouTube throttles rapid embeds and
+       starts refusing perfectly healthy videos after a handful of them;
+     * nothing is reported broken until it has failed twice, the second time in
+       a pass of its own, after the queue has gone quiet.
+   The ids come from whatever the app is really using, so a catalogue published
+   to Supabase is what gets tested, not the fallback plan in data.js. */
+let VT = null;
+/* Every run carries a token. Tapping "run" twice used to leave the first
+   stepper alive on the second run's list: both incremented the same cursor, so
+   nine of forty videos were skipped and the failures-only pass inherited them
+   as failures. A stale stepper now finds its token superseded and stops. */
+let vtToken = 0;
+
+function vtRows(){
+  const byVid = {};
+  const push = (vid, name, where)=>{
+    if(!vid) return;
+    if(byVid[vid]){
+      if(byVid[vid].where.indexOf(where) < 0) byVid[vid].where.push(where);
+      return;
+    }
+    byVid[vid] = { vid, name, where:[where], code:null };
+  };
+  DAYS.forEach(d=>{
+    const wd = L(d.wd) || String(d.id);
+    (d.items || []).forEach(it=>{
+      const e = EX[it.ex];
+      push(VIDEOS[it.ex], e ? exName(e) : it.ex, wd);
+    });
+    (d.cardio || []).forEach(id=>{
+      const c = CARDIO[id];
+      push(VIDEOS[id], c ? exName(c) : id, wd);
+    });
+    ((STATE.custom && STATE.custom[d.id]) || []).forEach(c=> push(customVideo(c), c.name, wd));
+  });
+  return Object.keys(byVid).map(k=> byVid[k]);
+}
+
+/* One real player, off-screen, destroyed either way. */
+function vtProbe(vid, ms, cb){
+  const box = document.createElement('div');
+  box.className = 'vtprobe';
+  document.body.appendChild(box);
+  let done = false, player = null;
+  const fin = code=>{
+    if(done) return;
+    done = true;
+    clearTimeout(to);
+    try{ if(player && player.destroy) player.destroy(); }catch(_){}
+    box.remove();
+    cb(code);
+  };
+  const to = setTimeout(()=> fin('noanswer'), ms);
+  ensureYTApi(err=>{
+    if(err || !window.YT || !window.YT.Player) return fin('noapi');
+    try{
+      player = new window.YT.Player(box, {
+        videoId: vid,
+        host: 'https://www.youtube-nocookie.com',
+        playerVars:{ autoplay:0, rel:0, playsinline:1, controls:0 },
+        events:{
+          onReady: ()=> fin('ok'),
+          onError: e=>{
+            const c = e && e.data;
+            fin(c === 101 || c === 150 ? 'blocked' : (c === 100 ? 'gone' : 'fail'));
+          }
+        }
+      });
+    }catch(_){ fin('fail'); }
+  });
+}
+
+function vtStatusText(code){
+  if(code === 'ok')      return t('vt_ok');
+  if(code === 'blocked') return t('vt_blocked');
+  if(code === 'gone')    return t('vt_gone');
+  if(code === 'noapi')   return t('vt_noapi');
+  if(code === 'noanswer')return t('vt_noanswer');
+  return t('vt_fail');
+}
+
+function vtStart(){
+  const my = ++vtToken;
+  VT = { rows: vtRows(), queue: null, at: 0, pass: 1, running: true, tested: 0, token: my };
+  VT.queue = VT.rows.map((r, i)=> i);
+  VT.total = VT.queue.length;
+  vtRender();
+  vtStep(my);
+}
+function vtStop(){
+  vtToken++;
+  if(VT) VT.running = false;
+  /* The probe in flight still owns a YouTube frame; its own deadline would
+     clear it within fifteen seconds, but not while the user is already back on
+     their workout. Take it out now — its callback is a no-op by then. */
+  Array.prototype.forEach.call(document.querySelectorAll('.vtprobe'), n=> n.remove());
+}
+function vtStep(my){
+  if(!VT || !VT.running || my !== vtToken) return;
+  /* The sheet was closed — stop rather than keep hammering YouTube. */
+  if(!el('vtBody')){ VT.running = false; return; }
+  if(VT.at >= VT.queue.length){
+    const bad = VT.rows.filter(r=> r.code && r.code !== 'ok');
+    if(VT.pass === 1 && bad.length){
+      /* Second pass, failures only: a throttled probe looks exactly like a
+         dead video, and calling a healthy video dead is the worse mistake. */
+      VT.pass = 2;
+      VT.at = 0;
+      /* `code && code !== 'ok'` and not just `!== 'ok'`: an untested row has a
+         null code and must never be inherited into the failures pass. */
+      VT.queue = VT.rows.map((r, i)=> i).filter(i=> VT.rows[i].code && VT.rows[i].code !== 'ok');
+      VT.tested = 0;
+      VT.total = VT.queue.length;
+      vtRender();
+      setTimeout(()=> vtStep(my), 1500);
+      return;
+    }
+    VT.running = false;
+    VT.finished = true;
+    vtRender();
+    return;
+  }
+  const row = VT.rows[VT.queue[VT.at]];
+  VT.current = row.vid;
+  vtRender();
+  vtProbe(row.vid, 15000, code=>{
+    if(my !== vtToken) return;
+    row.code = code;
+    VT.at++;
+    VT.tested++;
+    VT.current = null;
+    vtRender();
+    /* Spacing is not politeness, it is accuracy: back to back probes get
+       throttled and start answering "noanswer" for everything. */
+    setTimeout(()=> vtStep(my), 700);
+  });
+}
+
+function vtRender(){
+  if(!VT || !el('vtBody')) return;
+  const done = VT.rows.filter(r=> r.code).length;
+  const bad = VT.rows.filter(r=> r.code && r.code !== 'ok');
+  let head;
+  if(VT.finished){
+    head = bad.length
+      ? `<b>${bad.length}</b> / ${VT.rows.length} ${t('vt_failed')}`
+      : `<b>${VT.rows.length}</b> ${t('vt_all_ok')}`;
+  }else if(VT.pass === 2){
+    head = `${t('vt_retesting')} ${VT.tested}/${VT.total}`;
+  }else{
+    head = `${t('vt_testing')} ${done}/${VT.rows.length}`;
+  }
+  const pct = VT.rows.length ? Math.round(done / VT.rows.length * 100) : 0;
+  const rows = VT.rows.map(r=>{
+    const state = r.code ? (r.code === 'ok' ? 'ok' : 'bad') : (VT.current === r.vid ? 'run' : 'wait');
+    return `<div class="vtrow vtrow--${state}">
+      <span class="vtrow__dot"></span>
+      <span class="vtrow__n">${esc(r.name)}<span class="vtrow__w">${esc(r.where.join(' · '))}</span></span>
+      <span class="vtrow__s">${r.code ? esc(vtStatusText(r.code)) : (VT.current === r.vid ? '…' : '')}</span>
+    </div>`;
+  }).join('');
+  setHTML('vtBody', `<p class="vt__head">${head}</p>
+    <div class="vt__bar"><span style="width:${pct}%"></span></div>
+    <div class="vt__list">${rows}</div>`);
+}
+/* Rest is set per exercise, in seconds, with the plan's number offered as a
+   starting point and never as a rule. */
+function restSheet(exId, planSecs){
+  /* Read the stored value directly. Going through restFor() with no rest text
+     would hand back its 90-second fallback, so an exercise the user had never
+     touched opened this sheet showing 1:30 while its card said 2:00. */
+  const own = STATE.restSec && STATE.restSec[exId];
+  const cur = (typeof own === 'number' && own > 0) ? own : planSecs;
+  const chips = [30, 45, 60, 90, 120, 180, 240].map(s=>
+    `<button class="setchip ${s === cur ? 'is-on' : ''}" type="button"
+      data-act="restpick" data-a1="${s}">${rtFmt(s)}</button>`).join('');
+  openSheet(t('rs_title'), `
+    <p class="u-mut" style="font-size:var(--t-xs)">${t('rs_sub')}</p>
+    <div class="setchips mt4">${chips}</div>
+    <label class="field mt4"><span class="field__l">${t('rs_sec')}</span>
+      <input class="input" id="restVal" type="number" inputmode="numeric"
+        min="5" max="900" step="5" value="${cur}"></label>
+    <p class="u-mut mt2" style="font-size:var(--t-xxs)">${t('rs_plan')} ${rtFmt(planSecs)}</p>`,
+    `<button class="btn btn--ghost" data-act="restreset" data-a1="${esc(exId)}">${t('rs_reset')}</button>
+     <button class="btn btn--acc" data-act="restsave" data-a1="${esc(exId)}">${t('b_save')}</button>`);
+}
+
+function vtSheet(){
+  openSheet(t('vt_title'), `
+    <p class="u-mut" style="font-size:var(--t-xs)">${t('vt_sub')}</p>
+    <div id="vtBody" class="mt4"></div>`, `
+    <button class="btn btn--ghost" data-act="closesheet">${t('b_cancel')}</button>
+    <button class="btn btn--acc" data-act="vtrun">${t('vt_start')}</button>`);
+}
+
+/* ---- REST TIMER ----------------------------------------------------------
+   The point of this is to not leave the app between sets, so three things are
+   load-bearing:
+
+   * It lives in a bar appended to <body>, not inside #view. Anything inside
+     #view dies on the next rerender(), and rerender() happens every time a set
+     chip elsewhere is tapped or a tab is switched — the timer would vanish
+     mid-rest.
+   * It never calls rerender() itself. The bar writes into its own text node
+     each second, exactly like the set chips flip their own class: a re-render
+     here would blow away a half-typed weight in the field above.
+   * The countdown is computed from a wall-clock deadline, not by subtracting 1
+     per tick. Phone screens sleep and background tabs get throttled to one tick
+     a minute; a tick-counting timer comes back thinking 8 seconds have passed
+     when the real answer is 3 minutes. */
+let RT = null;
+let rtAudio = null;
+
+/* "2–3 min" → 120. "45 s" → 45. The lower bound of a range is the honest
+   default: it is the number the plan says you may go from, and +30 s is one
+   tap away. Unparseable rest text falls back to 90 s rather than to nothing. */
+function restSeconds(txt){
+  const s = String(txt == null ? '' : txt).toLowerCase().replace(',', '.');
+  const m = s.match(/(\d+(?:\.\d+)?)/);
+  if(!m) return 90;
+  const n = parseFloat(m[1]);
+  if(!isFinite(n) || n <= 0) return 90;
+  /* "min" anywhere, or a bare small number like "2–3", reads as minutes. */
+  const isMin = /min|'/.test(s) || (!/\bs\b|sec|"/.test(s) && n <= 10);
+  return Math.round(isMin ? n * 60 : n);
+}
+/* The plan's rest is a suggestion; the user's own value wins. Keyed by exercise
+   id so a choice made on Monday still holds in every block and on every day
+   that exercise appears — nobody wants to set the same number four times. */
+function restFor(exId, planRest){
+  const own = STATE.restSec && STATE.restSec[exId];
+  if(typeof own === 'number' && own > 0) return own;
+  return restSeconds(planRest);
+}
+function rtFmt(sec){
+  sec = Math.max(0, Math.round(sec));
+  const m = Math.floor(sec / 60);
+  return m + ':' + String(sec % 60).padStart(2, '0');
+}
+/* A beep built in the page: the app ships no audio files and asks for no
+   permissions. Created on the tap that starts the timer, which is what unlocks
+   audio on iOS — build it later and the alarm is silent. */
+function rtBeep(){
+  try{
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if(!AC) return;
+    if(!rtAudio) rtAudio = new AC();
+    if(rtAudio.state === 'suspended') rtAudio.resume();
+    const now = rtAudio.currentTime;
+    [0, 0.3, 0.6].forEach(off=>{
+      const osc = rtAudio.createOscillator();
+      const gain = rtAudio.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880, now + off);
+      gain.gain.setValueAtTime(0.0001, now + off);
+      gain.gain.exponentialRampToValueAtTime(0.35, now + off + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + off + 0.22);
+      osc.connect(gain).connect(rtAudio.destination);
+      osc.start(now + off);
+      osc.stop(now + off + 0.25);
+    });
+  }catch(_){}
+}
+function rtWarm(){
+  try{
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if(!AC) return;
+    if(!rtAudio) rtAudio = new AC();
+    if(rtAudio.state === 'suspended') rtAudio.resume();
+  }catch(_){}
+}
+function rtEl(){
+  let bar = document.getElementById('rtimer');
+  if(!bar){
+    bar = document.createElement('div');
+    bar.id = 'rtimer';
+    bar.className = 'rtimer';
+    document.body.appendChild(bar);
+  }
+  return bar;
+}
+function rtLeft(){
+  if(!RT) return 0;
+  return RT.running ? Math.max(0, (RT.deadline - Date.now()) / 1000) : RT.rest;
+}
+function rtStart(seconds, label){
+  rtWarm();
+  if(RT && RT.tick) clearInterval(RT.tick);
+  RT = { total: seconds, rest: seconds, running: true, label: label || '',
+         deadline: Date.now() + seconds * 1000, done: false };
+  rtBuild(RT.label);
+  rtPaint();
+  RT.tick = setInterval(rtPaint, 250);
+}
+function rtStop(){
+  if(RT && RT.tick) clearInterval(RT.tick);
+  RT = null;
+  const bar = document.getElementById('rtimer');
+  if(bar) bar.remove();
+}
+function rtToggle(){
+  if(!RT) return;
+  if(RT.running){
+    RT.rest = rtLeft();
+    RT.running = false;
+  }else{
+    if(RT.done){ RT.rest = RT.total; RT.done = false; }
+    RT.deadline = Date.now() + RT.rest * 1000;
+    RT.running = true;
+    rtWarm();
+  }
+  rtPaint();
+}
+/* ±30 moves the *set* rest as well as the time left, so +30 then −30 lands back
+   exactly where it started and "again" repeats what you actually chose — not
+   the longest value the timer happened to reach. */
+function rtAdd(sec){
+  if(!RT) return;
+  sec = parseInt(sec, 10) || 0;
+  const left = Math.max(0, rtLeft() + sec);
+  RT.total = Math.max(5, RT.total + sec);
+  /* +30 on a finished timer is the obvious "give me a bit more" gesture. */
+  if(RT.done && left > 0){ RT.done = false; RT.running = true; }
+  if(RT.running) RT.deadline = Date.now() + left * 1000;
+  else RT.rest = left;
+  rtPaint();
+}
+function rtReset(){
+  if(!RT) return;
+  RT.done = false;
+  RT.rest = RT.total;
+  RT.deadline = Date.now() + RT.total * 1000;
+  rtPaint();
+}
+/* Structure once, values four times a second. Rewriting the whole bar on every
+   tick would destroy and rebuild the very button under the user's finger —
+   the same reason a set chip flips its own class instead of re-rendering. */
+function rtBuild(label){
+  const bar = rtEl();
+  bar.innerHTML = `<span class="rtimer__fill"></span>
+    <div class="rtimer__in">
+      <span class="rtimer__t">
+        <span class="rtimer__v">0:00</span>
+        <span class="rtimer__l">${esc(label || t('rt_title'))}</span>
+      </span>
+      <button class="rtimer__b" type="button" data-act="rtadd" data-a1="-30" aria-label="-30s">&minus;30</button>
+      <button class="rtimer__b" type="button" data-act="rtadd" data-a1="30" aria-label="+30s">+30</button>
+      <button class="rtimer__b rtimer__b--wide" type="button" data-act="rttoggle"></button>
+      <button class="rtimer__x" type="button" data-act="rtstop" aria-label="${t('a_close')}">${ICONS.close}</button>
+    </div>`;
+  return bar;
+}
+function rtPaint(){
+  if(!RT) return;
+  const bar = document.getElementById('rtimer') || rtBuild(RT.label);
+  const left = rtLeft();
+  if(RT.running && left <= 0 && !RT.done){
+    RT.done = true;
+    RT.running = false;
+    RT.rest = 0;
+    rtBeep();
+    if(navigator.vibrate) try{ navigator.vibrate([300, 120, 300]); }catch(_){}
+  }
+  const pct = RT.total ? Math.max(0, Math.min(100, (left / RT.total) * 100)) : 0;
+  bar.classList.toggle('is-done', !!RT.done);
+  const fill = bar.querySelector('.rtimer__fill');
+  const val  = bar.querySelector('.rtimer__v');
+  const lab  = bar.querySelector('.rtimer__l');
+  const tog  = bar.querySelector('[data-act="rttoggle"]');
+  const text = RT.done ? t('rt_done') : rtFmt(left);
+  if(fill) fill.style.width = pct + '%';
+  if(val && val.textContent !== text) val.textContent = text;
+  if(lab && lab.textContent !== (RT.label || t('rt_title'))) lab.textContent = RT.label || t('rt_title');
+  const tt = RT.done ? t('rt_again') : (RT.running ? t('rt_pause') : t('rt_go'));
+  if(tog && tog.textContent !== tt) tog.textContent = tt;
 }
 
 /* =========================================================================
@@ -253,7 +678,7 @@ function renderHome(){
       : `<span style="display:grid;place-items:center;height:100%;color:var(--ink-3)">${ICONS.user}</span>`}</div>
     <div>
       <p class="u-eyebrow">${t('h_hello')}</p>
-      <h1 class="u-display" style="font-size:var(--t-xl)">${esc(name || t('app_name'))}</h1>
+      <h1 class="u-display u-display--name" style="font-size:var(--t-xl)">${esc(name || t('app_name'))}</h1>
     </div>
     <button class="iconbtn push" data-act="theme" aria-label="${t('a_theme')}">
       ${STATE.theme === 'light' ? ICONS.sun : ICONS.moon}</button>
@@ -522,7 +947,7 @@ function exCard(it, i){
     <div class="excard__body">
       ${specStrip(p)}
       ${it.note ? `<p class="exnote">${esc(L(it.note))}</p>` : ''}
-      ${logBlock(it.ex, p.s, lg)}
+      ${logBlock(it.ex, p.s, lg, p.rest, nm)}
       <div class="panels">
         <div class="seg" style="margin-bottom:var(--s4)">
           ${[['exec','t_exec'],['err','t_err'],['prog','t_prog']].map(([k,lbl])=>`
@@ -553,7 +978,10 @@ function specStrip(p){
 
 /* Shared by built-in and custom exercises so logging behaviour can never
    drift between the two paths (it used to be duplicated). */
-function logBlock(exId, sets, lg){
+function logBlock(exId, sets, lg, rest, name){
+  const plan = restSeconds(rest);
+  const secs = restFor(exId, rest);
+  const own = secs !== plan;
   return `<div class="log">
     <div class="log__h"><b>${t('lg_t')}</b><span>${t('lg_auto')}</span></div>
     <div class="grid2">
@@ -567,6 +995,14 @@ function logBlock(exId, sets, lg){
     <div class="log__row">
       <span class="field__l">${t('lg_s')}</span>
       <div class="setchips">${setChips(exId, sets, lg.done)}</div>
+    </div>
+    <div class="log__row">
+      <span class="field__l">${t('p_rest')}</span>
+      <button class="btn btn--acc btn--sm restbtn" data-act="rest"
+        data-a1="${secs}" data-a2="${esc(name || '')}">
+        ${ICONS.clock} ${t('rt_start')} ${rtFmt(secs)}</button>
+      <button class="iconbtn iconbtn--sm resttune ${own ? 'is-own' : ''}" data-act="restedit"
+        data-a1="${esc(exId)}" data-a2="${plan}" aria-label="${t('rs_title')}">${ICONS.edit}</button>
     </div>
     <textarea class="textarea mt4" placeholder="${t('lg_ph')}"
       data-inp="log" data-a1="${esc(exId)}" data-a2="note">${esc(lg.note || '')}</textarea>
@@ -639,11 +1075,9 @@ function customCard(c){
     </button>
     <div class="excard__body">
       ${specStrip({ s:c.s || '—', r:c.r || '—', rpe:'—', l:c.l || '—', rest:c.rest || '—' })}
-      ${logBlock(key, c.s, lg)}
+      ${logBlock(key, c.s, lg, c.rest, c.name)}
       <div class="panels">
-        ${c.vid
-          ? videoBlock(c.vid, customPhoto(c), c.name)
-          : `<div class="note">${ICONS.info}<div>${t('e_video_none')} ${t('m_video_hint')}</div></div>`}
+        ${videoBlock(customVideo(c), customPhoto(c), c.name)}
         <div class="flexr flexr--wrap mt6">
           <button class="btn btn--ghost btn--sm" data-act="exeditcustom" data-a1="${c.id}">${ICONS.edit} ${t('b_edit')}</button>
           <button class="btn btn--danger btn--sm" data-act="exdelcustom" data-a1="${c.id}">${ICONS.trash} ${t('b_del')}</button>
@@ -741,7 +1175,7 @@ function renderProfile(){
     <div class="avatar avatar--xl" style="margin:0 auto">${p.photo
       ? `<img src="${coachPhoto(p.photo)}" alt="">`
       : `<span style="display:grid;place-items:center;height:100%;color:var(--ink-3)">${ICONS.user}</span>`}</div>
-    <h1 class="u-display mt4" style="font-size:var(--t-xl)">${esc(p.name || t('app_name'))}</h1>
+    <h1 class="u-display u-display--name mt4" style="font-size:var(--t-xl)">${esc(p.name || t('app_name'))}</h1>
     <p class="u-mut" style="font-size:var(--t-xs)">${USER ? esc(USER.email) : t('pr_local')}</p>
     <button class="btn btn--ghost btn--sm mt4" data-act="profedit">${ICONS.edit} ${t('pr_edit')}</button>
   </div>`;
@@ -796,6 +1230,10 @@ function renderProfile(){
     <div class="switch">
       <div><p class="switch__t">${t('pr_import')}</p><p class="switch__s">${t('pr_import_s')}</p></div>
       <button class="iconbtn" data-act="import" aria-label="${t('pr_import')}">${ICONS.upload}</button>
+    </div>
+    <div class="switch">
+      <div><p class="switch__t">${t('vt_title')}</p><p class="switch__s">${t('vt_row_s')}</p></div>
+      <button class="btn btn--ghost btn--sm" data-act="vidtest">${t('vt_open')}</button>
     </div>
     ${catalogRowHTML()}
   </div>`;
@@ -1256,35 +1694,58 @@ const ACTIONS = {
     btn.classList.toggle('is-on');   /* no re-render: keeps scroll and focus */
   },
 
-  /* inline video — builds a real player so errors are detectable */
+  /* inline video — the iframe plays, the API only reports errors */
   playvid: (box, vid, poster)=>{
     const host = box.closest('.vplayer') || box;
-    const mount = 'ytp-' + Math.random().toString(36).slice(2, 9);
-    host.innerHTML = `<div class="vplayer__loading">${t('e_video_loading')}</div><div id="${mount}"></div>`;
-    ensureYTApi(err=>{
-      if(err || !window.YT || !window.YT.Player){
-        videoFail(host, vid, poster, t('e_video_fail'));
-        return;
-      }
-      /* If the card was re-rendered while the API was loading, the mount point
-         is gone — bail rather than throwing. */
-      if(!document.getElementById(mount)) return;
-      try{
-        new window.YT.Player(mount, {
-          videoId: vid,
-          host: 'https://www.youtube-nocookie.com',
-          playerVars:{ autoplay:1, rel:0, modestbranding:1, playsinline:1 },
-          events:{
-            onReady: e=>{
-              const load = host.querySelector('.vplayer__loading');
-              if(load) load.remove();
-              try{ e.target.playVideo(); }catch(_){}
-            },
-            onError: e=> videoFail(host, vid, poster, ytErrMsg(e && e.data))
-          }
-        });
-      }catch(e){ videoFail(host, vid, poster, t('e_video_fail')); }
+    const label = host.getAttribute('data-label') || '';
+    /* While a player is mounted the host must stop being a play button: a tap
+       on the loading strip used to restart the whole load and reset its
+       deadline, which is one of the ways "it never opens" was reached. */
+    host.removeAttribute('data-act');
+    host.classList.add('is-playing');
+    host.innerHTML = `<div class="vplayer__loading">${t('e_video_loading')}</div>
+      <iframe class="vplayer__frame" src="${esc(ytEmbedSrc(vid))}" title="${esc(label)}"
+        allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+        allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>
+      <button class="vplayer__close" type="button" data-act="closevid"
+        aria-label="${t('e_video_close')}">${ICONS.close}</button>`;
+    const frame = host.querySelector('iframe');
+    let settled = false;
+    /* `is-playing` is dropped by closevid, so it doubles as "this attempt is
+       still the current one" — without it a deadline or a late onError could
+       paint a failure over a card the user already closed. */
+    const live = ()=> host.classList.contains('is-playing') && frame.isConnected;
+    const watchdog = setTimeout(()=>{
+      if(settled || !live()) return;
+      settled = true;
+      videoFail(host, vid, poster, t('e_video_fail'));
+    }, 10000);
+    /* `load` fires for the frame itself, with no round-trip to the API — this
+       is what guarantees the placeholder always comes down. */
+    frame.addEventListener('load', ()=>{
+      settled = true;
+      clearTimeout(watchdog);
+      const wait = host.querySelector('.vplayer__loading');
+      if(wait) wait.remove();
     });
+    /* No IFrame API here on purpose — see ytEmbedSrc(). Telling a deleted video
+       apart from a slow one is worth something, but not worth a player that
+       only works once per page load. That answer now lives in the video
+       self-test (Profile → Settings), which builds its own players off-card and
+       destroys each one before starting the next. */
+  },
+
+  /* Close the video and put the poster back. Rebuilt in place, without a
+     re-render, so the card keeps its scroll position and any typed log. */
+  closevid: (btn)=>{
+    const host = btn.closest('.vplayer');
+    if(!host) return;
+    const vid = host.getAttribute('data-a1');
+    const poster = host.getAttribute('data-a2');
+    const label = host.getAttribute('data-label') || '';
+    host.classList.remove('is-playing');
+    host.setAttribute('data-act', 'playvid');
+    host.innerHTML = videoPoster(vid, poster, label);
   },
 
   /* exercises: add / edit / remove */
@@ -1329,12 +1790,17 @@ const ACTIONS = {
   exsave: async (el2, mode, id)=>{
     const name = fieldVal('exName');
     if(!name){ toast(t('ts_needname')); return; }
-    /* A video is optional, but if something was typed it must be a real
-       YouTube reference — otherwise we'd store a value that can never play. */
+    /* Every exercise carries a demo video — there is no exercise you are meant
+       to perform without being able to see it done first. */
     const raw = fieldVal('exVid');
     const vid = ytId(raw);
     const vf = el('fExVid');
-    if(raw && !vid){
+    if(!raw){
+      if(vf) vf.classList.add('is-bad');
+      toast(t('m_video_req'));
+      return;
+    }
+    if(!vid){
       if(vf) vf.classList.add('is-bad');
       toast(t('m_video_bad'));
       return;
@@ -1561,7 +2027,45 @@ const ACTIONS = {
   obskip: ()=>{ obCollect(); obFinish(); },
 
   /* sheet */
-  closesheet: ()=> closeSheet(),
+  /* Closing the sheet has to stop the run, or a cancelled test keeps probing
+     YouTube in the background for another forty videos. */
+  closesheet: ()=>{ vtStop(); closeSheet(); },
+
+  vidtest: ()=> vtSheet(),
+  vtrun:   ()=> vtStart(),
+
+  /* rest timer — never re-renders, so a set in progress is never disturbed */
+  rest:     (btn, secs, name)=> rtStart(parseInt(secs, 10) || 90, name),
+
+  /* the user's own rest time, per exercise */
+  restedit: (btn, exId, planSecs)=> restSheet(exId, parseInt(planSecs, 10) || 90),
+  restpick: (btn, secs)=>{
+    /* Sets the field and flips its own classes — no re-render, or the number
+       the user is halfway through typing would vanish. */
+    const f = el('restVal');
+    if(f) f.value = secs;
+    const wrap = btn.parentNode;
+    Array.prototype.forEach.call(wrap.children, b=> b.classList.toggle('is-on', b === btn));
+  },
+  restsave: (btn, exId)=>{
+    const raw = parseInt(fieldVal('restVal'), 10);
+    if(!isFinite(raw) || raw < 5){ toast(t('rs_bad')); return; }
+    STATE.restSec[exId] = Math.min(900, raw);
+    saveState();
+    closeSheet();
+    rerender();
+    toast(t('rs_saved') + ' ' + rtFmt(STATE.restSec[exId]));
+  },
+  restreset: (btn, exId)=>{
+    delete STATE.restSec[exId];
+    saveState();
+    closeSheet();
+    rerender();
+    toast(t('rs_reset_ok'));
+  },
+  rtadd:    (btn, s)=> rtAdd(s),
+  rttoggle: ()=> rtToggle(),
+  rtstop:   ()=> rtStop(),
 
   /* gate (static markup keeps data-act too, so one dispatcher serves both) */
   authin:    ()=> authSignIn(),

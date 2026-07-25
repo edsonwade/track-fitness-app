@@ -73,7 +73,10 @@
 .gmark{text-align:center;margin-bottom:26px}
 .gmark .m2{font-size:27px;letter-spacing:.01em;font-weight:600;color:var(--g-ink);
   display:inline-flex;align-items:flex-start;line-height:1.1}
-.gmark .m2 b{font-family:'Anton',inherit;font-weight:400;text-transform:uppercase;
+/* No text-transform here. The markup says "Vanilson" and the sign-in screen has
+   to read "Vanilson Workout" exactly — an uppercase transform was rendering it
+   as "VANILSON Workout". */
+.gmark .m2 b{font-family:'Anton',inherit;font-weight:400;
   letter-spacing:-.01em}
 
 .auth-toggle{display:flex;border:1px solid var(--g-line);border-radius:999px;padding:4px;margin-bottom:22px;gap:4px}

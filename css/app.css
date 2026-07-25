@@ -593,6 +593,29 @@
 /* The IFrame API replaces the mount div with an iframe, so target both. */
 .vplayer iframe,.vplayer>div:not(.vplayer__loading):not(.vplayer__fail){
   position:absolute;inset:0;width:100%;height:100%;border:0}
+/* ⚠️ Without the two rules below, YouTube's own expand button does nothing
+   visible. The browser *does* enter fullscreen, but the rule above is more
+   specific than the UA's `:fullscreen` style, so `position:absolute` wins and
+   the frame keeps painting at its old size inside `.vplayer`, which is
+   `overflow:hidden`. So the video appears not to expand at all. These have to
+   stay as two separate rules: one unknown selector invalidates the whole
+   list, and Safari only knows the -webkit- name. */
+.vplayer iframe:fullscreen{
+  position:fixed;inset:0;width:100vw;height:100vh;max-width:none;max-height:none}
+.vplayer iframe:-webkit-full-screen{
+  position:fixed;inset:0;width:100vw;height:100vh;max-width:none;max-height:none}
+/* Closing the video is a first-class action, not something to reach the tab
+   bar for — it sits over the frame, clear of YouTube's own controls. */
+.vplayer__close{
+  position:absolute;top:var(--s2);right:var(--s2);z-index:3;
+  width:2rem;height:2rem;border-radius:50%;display:grid;place-items:center;
+  background:rgba(8,9,11,.72);color:#f6f8f2;border:1px solid rgba(255,255,255,.16);
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.vplayer__close svg{width:1rem;height:1rem}
+.vplayer__close:active{transform:scale(.94)}
+/* The close button belongs to the card, not to the fullscreen frame — leaving
+   it visible would float it over a video it can no longer sit on top of. */
+.vplayer:has(iframe:fullscreen) .vplayer__close{display:none}
 .vplayer__loading{
   position:absolute;inset:0;z-index:2;display:grid;place-items:center;
   background:var(--media-bg);color:var(--ink-3);
@@ -604,6 +627,80 @@
   padding:var(--s5);text-align:center;background:var(--surface-2)}
 .vplayer__fail p{font-size:var(--t-xs);color:var(--ink-2);max-width:22rem}
 .vcap{font-size:var(--t-xxs);color:var(--ink-3);margin-top:var(--s2);text-align:center}
+
+/* ---- rest timer ----
+   Sits directly above the tab bar and stays put while the day scrolls under
+   it, because the whole point is not having to look for it between sets. */
+.restbtn{margin-left:auto}
+/* Lit when the time shown is the user's own, not the plan's — so a glance says
+   whether this number was chosen or inherited. */
+.resttune.is-own{border-color:var(--acc);color:var(--acc)}
+.rtimer{
+  position:fixed;left:50%;transform:translateX(-50%);
+  bottom:calc(var(--tabbar-h) + var(--safe-b) + var(--s3));
+  z-index:calc(var(--z-tabbar) + 1);
+  width:min(28rem, calc(100vw - 2rem));
+  border-radius:var(--r-pill);overflow:hidden;
+  background:var(--surface-1);border:1px solid var(--line-strong);
+  box-shadow:var(--shadow-3);
+}
+/* The fill drains left to right behind the numbers — readable at a glance
+   from arm's length, which a thin progress line is not. */
+.rtimer__fill{
+  position:absolute;inset:0 auto 0 0;background:var(--surface-3);
+  transition:width var(--d-fast) linear}
+.rtimer.is-done .rtimer__fill{width:100% !important;background:var(--acc-fill)}
+.rtimer__in{
+  position:relative;display:flex;align-items:center;gap:var(--s2);
+  padding:var(--s2) var(--s3)}
+.rtimer__t{flex:1;min-width:0;display:flex;flex-direction:column}
+.rtimer__v{display:block;font-family:var(--f-display);font-size:var(--t-lg);
+  line-height:1;letter-spacing:var(--tr-display);font-variant-numeric:tabular-nums}
+.rtimer__l{display:block;font-size:var(--t-xxs);color:var(--ink-3);font-weight:700;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rtimer.is-done .rtimer__v,.rtimer.is-done .rtimer__l{color:var(--acc-on-fill)}
+.rtimer__b{
+  flex:0 0 auto;padding:.4rem .6rem;border-radius:var(--r-pill);
+  border:1px solid var(--line);background:var(--surface-2);color:var(--ink);
+  font-size:var(--t-xxs);font-weight:800;font-variant-numeric:tabular-nums}
+.rtimer__b--wide{padding:.4rem .8rem;text-transform:uppercase;letter-spacing:.06em}
+.rtimer__b:active{transform:scale(.94)}
+.rtimer__x{flex:0 0 auto;width:1.9rem;height:1.9rem;display:grid;place-items:center;
+  border-radius:50%;color:var(--ink-3)}
+.rtimer__x svg{width:1rem;height:1rem}
+.rtimer.is-done .rtimer__b{background:var(--acc-on-fill);color:var(--acc);border-color:transparent}
+.rtimer.is-done .rtimer__x{color:var(--acc-on-fill)}
+
+/* ---- video self-test ----
+   The probe player has to be in the document and have a real size or the
+   IFrame API never reports ready, so it is parked off-screen rather than
+   hidden: display:none or zero size would make every video look broken. */
+.vtprobe{position:fixed;left:-10000px;top:0;width:320px;height:180px;
+  pointer-events:none;opacity:0}
+.vt__head{font-size:var(--t-sm);color:var(--ink-2)}
+.vt__head b{color:var(--ink);font-size:var(--t-md)}
+.vt__bar{height:.35rem;border-radius:var(--r-pill);background:var(--surface-3);
+  overflow:hidden;margin:var(--s3) 0}
+.vt__bar span{display:block;height:100%;background:var(--acc-fill);
+  transition:width var(--d-mid) var(--e-out)}
+.vt__list{max-height:52vh;overflow:auto;-webkit-overflow-scrolling:touch}
+.vtrow{display:flex;align-items:center;gap:var(--s3);
+  padding:var(--s2) 0;border-bottom:1px solid var(--line)}
+.vtrow:last-child{border-bottom:0}
+.vtrow__dot{width:.5rem;height:.5rem;border-radius:50%;flex:0 0 auto;
+  background:var(--ink-3);opacity:.35}
+.vtrow--ok .vtrow__dot{background:var(--acc);opacity:1}
+.vtrow--bad .vtrow__dot{background:var(--neg);opacity:1}
+.vtrow--run .vtrow__dot{background:var(--ink);opacity:1;animation:vtpulse 1s infinite}
+@keyframes vtpulse{50%{opacity:.25}}
+/* Both are spans on their own line, so they need display:block — the trap
+   this codebase has already fallen into more than once. */
+.vtrow__n{flex:1;min-width:0;display:block;font-size:var(--t-xs);font-weight:700}
+.vtrow__w{display:block;font-size:var(--t-xxs);font-weight:600;color:var(--ink-3)}
+.vtrow__s{flex:0 0 auto;font-size:var(--t-xxs);font-weight:700;
+  text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3)}
+.vtrow--ok .vtrow__s{color:var(--acc)}
+.vtrow--bad .vtrow__s{color:var(--neg)}
 
 /* =========================================================================
    LIST ROWS

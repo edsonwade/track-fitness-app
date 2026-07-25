@@ -274,13 +274,22 @@ const EX={
 };
 
 /* ---- demo videos (played inline, never as an outbound link) ----
-   Every id here was checked twice: oEmbed confirms the video is live and
-   returns its real title, and each was loaded as an actual youtube-nocookie
-   embed in a browser to confirm embedding is permitted.
-   Coverage is now complete — all 33 exercises AND both cardio entries. Keep it
-   that way: an entry with no id renders a "no video" slot. */
+   Every exercise has one; there is no such thing as an optional video here.
+
+   **oEmbed is not a sufficient check.** It answers for any live video, including
+   ones whose owner forbids embedding — and such a video does not raise onError,
+   it simply never answers, which is what made a card spin for ever. The only
+   check that counts is building a real youtube-nocookie YT.Player and waiting
+   for onReady. Test from a cold page: YouTube throttles repeated embed loads,
+   so after a handful of probes everything starts reporting "no response",
+   including ids that are perfectly fine. */
 const VIDEOS={
- legpress:'waAxlYvtCcI',hack:'Whp712OHPl8',legext:'Svq2T3L9oKo',lunge:'mKRq_p3hQr4',calf_s:'tPiLhI7TkLE',plank:'9dn5Fb3cSoE',
+ legpress:'waAxlYvtCcI',hack:'Whp712OHPl8',legext:'Svq2T3L9oKo',lunge:'mKRq_p3hQr4',
+ /* Was tPiLhI7TkLE. oEmbed happily returned its title, so it looked fine, but
+    the embedded player never answers — it neither plays nor raises onError,
+    which is what left the card spinning for ever. */
+ calf_s:'SorIB5_zO9A',
+ plank:'9dn5Fb3cSoE',
  dbbench:'tDxKGeY-hjQ',incldb:'G-i3jMIbDmo',pecdeck:'FwtqdGlRgig',pushdown:'M-DTY40JG9M',ohext:'fpKepisjHWk',skull:'5yqU0BnErZc',
  dbohp:'0uB7PH3oFVo',lateral:'jannLx4RxKo',reardelt:'EWwR2Z-yHjQ',dbcurl:'k31LK_VASok',hammer:'xvvjkh3Aa4s',cablecurl:'zqklqTcOsbo',
  pulldown:'S3HYdarCHDo',csrow:'VvT8ZFAo21Y',seatedrow:'2YebbYuuBJQ',strarm:'7XprSYwflfw',facepull:'YxQivR_kljk',
@@ -302,7 +311,16 @@ const VIDEOS={
 
  /* Cardio — these had no video at all before. */
  treadmill:'raa5u4CF2Q4',      /* "Treino na Esteira: Dicas e Benefícios" — Smart Fit */
- bike:'qwTBKqiCGpM'            /* "Passo a passo para ajustar bike" — Personal ONFIT */
+ bike:'qwTBKqiCGpM',           /* "Passo a passo para ajustar bike" — Personal ONFIT */
+
+ /* No day lists these four, and they have no EX entry. They exist because
+    TEXT_EX in photos.js resolves a user-typed name to them, so a custom
+    exercise called "Cable Crossover" finds both a photo and a demo without
+    anyone having pasted a link. Nothing here may be left without a video. */
+ crossover:'D9dh1jKBlXY',      /* HASfit — cable crossover, two arms          */
+ chestpress:'n8TOta_pfr4',     /* LIVESTRONG — how to use a chest press machine */
+ rowdb:'ufhQhwyrx-4',          /* BarBend — one-arm dumbbell row              */
+ bbrow:'rqTOAM8WoeM'           /* Barbell bent-over row tutorial              */
 };
 
 /* ---- cardio entries (own shape) ---- */
