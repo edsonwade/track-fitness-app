@@ -73,8 +73,21 @@ returned mostly photographs of cattle.
 The last three have no exercise id of their own — they are reached by name, from
 exercises the user types, via `TEXT_EX` in `js/photos.js`.
 
-Still on a movement pattern, because no honest photo was found: `hipthrust`,
-`pallof`, `birddog`, `legpress_h`, and the two cardio entries.
+Still on a movement pattern: `birddog` (which no day lists, so it draws no card)
+and the two cardio entries, whose pattern photo is a treadmill and a bike — the
+right subject. (`legpress_h` deliberately shares `ex-legpress.jpg` — same
+machine, feet placed high.)
+
+**`ex-pallof.jpg` is the one file here that is not a Pexels still.** No free
+stock library has a Pallof press: Pexels returns clothes irons, doorbells and
+elevator buttons; Wikimedia Commons has nothing; Openverse has exactly one,
+licensed `by-nc-nd`. Every near-miss inspected — band pull-aparts, cable
+crossovers, a TRX split squat — was a *different* exercise, which is worse than
+a pattern photo, not better. So the photo is a frame taken from the demonstration
+video the card already plays, credited below. Photo and video are then the same
+rep of the same exercise, which is the whole point. The frame is stored locally
+like everything else; nothing is hotlinked and no image service is called at
+runtime.
 
 | File | Exercise | Pexels photo ID | Source |
 |:---|:---|:---|:---|
@@ -83,6 +96,7 @@ Still on a movement pattern, because no honest photo was found: `hipthrust`,
 | `ex-legext.jpg` | Leg Extension | 19722966 | https://www.pexels.com/photo/19722966/ |
 | `ex-lunge.jpg` | Dumbbell Lunge | 29825222 | https://www.pexels.com/photo/29825222/ |
 | `ex-dbrdl.jpg` | Romanian Deadlift | 29825217 | https://www.pexels.com/photo/29825217/ |
+| `ex-hipthrust.jpg` | Hip Thrust (barbell, back on bench) | 13122465 | https://www.pexels.com/photo/13122465/ |
 | `ex-legcurl_seat.jpg` | Seated Leg Curl | 28731788 | https://www.pexels.com/photo/28731788/ |
 | `ex-legcurl_l.jpg` | Lying Leg Curl | 6539840 | https://www.pexels.com/photo/6539840/ |
 | `ex-calf_s.jpg` | Standing Calf Raise | 13965339 | https://www.pexels.com/photo/13965339/ |
@@ -115,6 +129,12 @@ Still on a movement pattern, because no honest photo was found: `hipthrust`,
 | `ex-kickback.jpg` | Cable Triceps Kickback | 29778851 | https://www.pexels.com/photo/29778851/ |
 | `ex-bbrow.jpg` | Bent-Over Barbell Row (by name) | 14591532 | https://www.pexels.com/photo/14591532/ |
 | `ex-pecdeck.jpg` | Pec Deck | 21633399 | https://www.pexels.com/photo/21633399/ |
+
+### Not from Pexels
+
+| File | Exercise | Source |
+|:---|:---|:---|
+| `ex-pallof.jpg` | Pallof Press | Frame from "Exercício: Pallof Press" by **Wallace Leite Personal** (https://www.youtube.com/@wallaceleittepersonal), the same video the card plays — https://www.youtube.com/watch?v=91zJZhRx2u0 |
 
 > **Checking for repeats needs eyes, not hashes.** `ex-kickback.jpg` was first taken
 > from photo 29218854 — which is already `ex-ohext.jpg`. Downloaded at a different

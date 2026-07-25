@@ -105,7 +105,7 @@ const EX_IMG = {
      photo is the honest match, and the pattern floor (a barbell squat) was not. */
   legpress:'ex-legpress.jpg', legpress_h:'ex-legpress.jpg',
   hack:'ex-hack.jpg', legext:'ex-legext.jpg',
-  lunge:'ex-lunge.jpg', dbrdl:'ex-dbrdl.jpg',
+  lunge:'ex-lunge.jpg', dbrdl:'ex-dbrdl.jpg', hipthrust:'ex-hipthrust.jpg',
   legcurl_seat:'ex-legcurl_seat.jpg', legcurl_l:'ex-legcurl_l.jpg',
   calf_s:'ex-calf_s.jpg', calf_seat:'ex-calf_seat.jpg',
   /* chest */
@@ -121,6 +121,10 @@ const EX_IMG = {
   cgbench:'ex-cgbench.jpg', dip:'ex-dip.jpg', kickback:'ex-kickback.jpg',
   /* core */
   plank:'ex-plank.jpg', legraise:'ex-legraise.jpg', cablecrunch:'ex-cablecrunch.jpg',
+  /* The only photo here that is not a Pexels still: no free stock library has a
+     Pallof press, so this is a frame of the demo video the card already plays —
+     which makes photo and video the same rep of the same exercise. */
+  pallof:'ex-pallof.jpg',
   /* no EX id of their own — reached only by name, from exercises the user types */
   crossover:'ex-crossover.jpg', chestpress:'ex-chestpress.jpg', rowdb:'ex-rowdb.jpg',
   bbrow:'ex-bbrow.jpg'
@@ -246,13 +250,15 @@ const TEXT_EX = [
   ['leg press','legpress'], ['hack squat','hack'],
   ['leg extension','legext'], ['cadeira extensora','legext'],
   ['lunge','lunge'], ['afundo','lunge'],
+  ['hip thrust','hipthrust'], ['elevacao pelvica','hipthrust'],
   ['romanian deadlift','dbrdl'], ['stiff','dbrdl'],
   ['seated leg curl','legcurl_seat'], ['lying leg curl','legcurl_l'],
   ['leg curl','legcurl_l'], ['mesa flexora','legcurl_l'],
   ['standing calf','calf_s'], ['seated calf','calf_seat'],
   ['panturrilha sentada','calf_seat'], ['panturrilha','calf_s'],
   ['hanging leg raise','legraise'], ['elevacao de pernas','legraise'],
-  ['cable crunch','cablecrunch'], ['plank','plank'], ['prancha','plank']
+  ['cable crunch','cablecrunch'], ['plank','plank'], ['prancha','plank'],
+  ['pallof press','pallof'], ['pallof','pallof']
 ];
 const TEXT_EX_RE = TEXT_EX.map(p=>[
   new RegExp('(^|[^a-z0-9])' + flat(p[0]).replace(/[.*+?^${}()|[\]\\]/g,'\\$&')

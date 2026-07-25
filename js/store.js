@@ -71,6 +71,11 @@ function normState(){
   }
   if(!Array.isArray(STATE.trainers)) STATE.trainers = [];
   if(!Array.isArray(STATE.goals)) STATE.goals = [];
+  /* Rest the user chose, in seconds, keyed by exercise id ('c<id>' for their
+     own exercises). The plan's rest is only ever a suggestion — how long
+     someone needs between sets is theirs to decide, not the app's. Absent key
+     means "use the plan". Defaulted here so an older backup imports cleanly. */
+  if(!STATE.restSec || typeof STATE.restSec !== 'object') STATE.restSec = {};
 
   STATE.trainers = STATE.trainers.map(normTrainer);
   STATE.goals = STATE.goals.map(normGoal);
@@ -363,10 +368,28 @@ const SUPA_ANON = 'sb_publishable_739Cd4HJWV5VWDeOZ765XQ_QwiBDIow';
 let sb = null, USER = null, signingUp = false;
 const cloudConfigured = ()=> SUPA_URL.indexOf('http') === 0 && SUPA_ANON.length > 20;
 
+/* Which user the UI was last built for. `null` means "nothing on screen yet". */
+let bootedFor = null;
+
 function applyGate(){
   const g = document.getElementById('gate');
   if(g) g.style.display = USER ? 'none' : 'flex';
-  if(USER){ gateMsg(''); if(typeof boot === 'function') boot(); }
+  if(USER){
+    gateMsg('');
+    /* ⚠️ Only build the UI when the signed-in user actually changes.
+       onAuthStateChange also fires for token refreshes and for the tab simply
+       regaining focus, and this used to call boot() every single time — a full
+       rerender() of #view. That is what made a playing video die on its own a
+       second after it opened, and the card come back blank: the <iframe> was
+       thrown away mid-load and rebuilt as a poster, on every card at once.
+       A refreshed token changes nothing on screen and must repaint nothing. */
+    if(typeof boot === 'function' && bootedFor !== USER.id){
+      bootedFor = USER.id;
+      boot();
+    }
+  }else{
+    bootedFor = null;
+  }
   if(typeof syncScrollLock === 'function') syncScrollLock();
 }
 function initCloud(){
@@ -380,12 +403,17 @@ function initCloud(){
     });
     sb.auth.onAuthStateChange((_e, session)=>{
       if(signingUp) return;
+      const was = USER && USER.id;
       USER = session ? session.user : null;
+      const now = USER && USER.id;
       applyGate();
       /* o catálogo partilhado é independente do estado privado: um falha sem
          levar o outro atrás, e sair fecha o websocket para não ficar a ouvir
-         alterações de um utilizador que já não está aqui */
-      if(USER){ cloudPull(); catalogSync(); }
+         alterações de um utilizador que já não está aqui.
+         Só se refaz o trabalho quando o utilizador MUDA — um token renovado
+         não muda dados nenhuns, e voltar a puxar tudo a cada renovação era a
+         segunda razão para o ecrã se redesenhar sozinho a meio de uma série. */
+      if(USER){ if(was !== now){ cloudPull(); catalogSync(); } }
       else catalogUnsubscribe();
     });
   }catch(e){ sb = null; gateMsg(t('g_srverr')); }
@@ -395,10 +423,15 @@ async function cloudPull(){
   try{
     const { data } = await sb.from('user_state').select('data').eq('user_id', USER.id).maybeSingle();
     if(data && data.data){
+      /* Last-write-wins is unchanged: the cloud row still replaces STATE. What
+         changed is that an identical row no longer repaints the screen — the
+         pull that follows every sign-in event used to rebuild #view even when
+         it brought back exactly what was already there. */
+      const before = JSON.stringify(STATE);
       STATE = data.data; normState(); saveLocal();
       LANG = (STATE.lang === 'pt') ? 'pt' : 'en';
       applyTheme();
-      if(typeof boot === 'function') boot();
+      if(JSON.stringify(STATE) !== before && typeof boot === 'function') boot();
     }
   }catch(e){}
 }

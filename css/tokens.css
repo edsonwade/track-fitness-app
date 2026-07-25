@@ -215,6 +215,10 @@ ol,ul{list-style:none}
 /* ---- type utilities ---- */
 .u-display{font-family:var(--f-display);font-weight:400;text-transform:uppercase;
   line-height:var(--lh-tight);letter-spacing:var(--tr-display)}
+/* Names are written, not shouted. A person's name and the app's own name keep
+   the capitalisation they were typed with — "Vanilson", never "VANILSON". The
+   uppercase display treatment stays for section and card titles. */
+.u-display--name{text-transform:none}
 .u-num{font-family:var(--f-display);line-height:var(--lh-tight);
   letter-spacing:var(--tr-display);font-variant-numeric:tabular-nums}
 .u-eyebrow{font-size:var(--t-xxs);font-weight:700;text-transform:uppercase;
