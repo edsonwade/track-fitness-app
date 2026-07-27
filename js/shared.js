@@ -244,13 +244,18 @@ async function saveSharedExercise(exKey, patch){
         .insert({ ...patch, ex_key: exKey, created_by: USER.id, updated_by: USER.id });
       if(error) throw error;
     }else{
+      const sentVer = SHARED.ver['ex:' + exKey];
       const { data, error } = await sb.from('shared_exercises')
         .update(patch)
         .eq('id', existing.id)
-        .eq('version', SHARED.ver['ex:' + exKey])
+        .eq('version', sentVer)
         .select('id');
       if(error) throw error;
-      if(!data || !data.length){ await catalogPull(true); return { ok:false, reason:'conflict' }; }
+      if(!data || !data.length){
+        const probe = await sb.from('shared_exercises').select('version').eq('id', existing.id).maybeSingle();
+        await catalogPull(true);
+        return zeroRowReason('shared_exercises', existing.id, sentVer, probe.data);
+      }
     }
     await catalogPull(true);
     return { ok:true };
@@ -266,13 +271,18 @@ async function saveSharedDay(dayNo, patch){
         .insert({ ...patch, day_no: Number(dayNo), created_by: USER.id, updated_by: USER.id });
       if(error) throw error;
     }else{
+      const sentVer = SHARED.ver['day:' + dayNo];
       const { data, error } = await sb.from('shared_days')
         .update(patch)
         .eq('id', existing.id)
-        .eq('version', SHARED.ver['day:' + dayNo])
+        .eq('version', sentVer)
         .select('id');
       if(error) throw error;
-      if(!data || !data.length){ await catalogPull(true); return { ok:false, reason:'conflict' }; }
+      if(!data || !data.length){
+        const probe = await sb.from('shared_days').select('version').eq('id', existing.id).maybeSingle();
+        await catalogPull(true);
+        return zeroRowReason('shared_days', existing.id, sentVer, probe.data);
+      }
     }
     await catalogPull(true);
     return { ok:true };
@@ -286,6 +296,22 @@ async function saveSharedDay(dayNo, patch){
 function errText(e){
   if(!e) return 'erro desconhecido';
   return [e.message, e.details, e.hint].filter(Boolean).join(' · ') || String(e);
+}
+
+/* Um UPDATE que não tocou linha nenhuma é ambíguo — e é ESTE o caso real que
+   fazia a app mentir. A RLS/Postgres não lança erro quando recusa uma escrita:
+   devolve simplesmente zero linhas, exactamente como um conflito de versão.
+   Relemos a linha para distinguir:
+     • linha desapareceu            -> apagada/id errado
+     • versão IGUAL à que enviámos  -> a base RECUSOU a escrita (RLS/permissão),
+                                       não houve conflito nenhum
+     • versão DIFERENTE             -> conflito real, alguém mexeu primeiro
+   Sem isto, uma recusa de RLS aparecia como "alguém editou isto" e revertia. */
+function zeroRowReason(table, id, sentVer, curRow){
+  if(!curRow) return { ok:false, reason:'error', msg:'linha não encontrada em ' + table + ' (id ' + id + ') — recarrega e tenta outra vez' };
+  if(curRow.version === sentVer) return { ok:false, reason:'blocked',
+    msg:'a base de dados recusou a escrita (RLS/permissão) em ' + table + ': versão ' + sentVer + ' não mudou mas nenhuma linha foi atualizada' };
+  return { ok:false, reason:'conflict' };
 }
 
 /* Resposta comum às duas escritas, para o ui.js não repetir a mesma cadeia
