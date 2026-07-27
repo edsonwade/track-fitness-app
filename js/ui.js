@@ -22,6 +22,13 @@ let editSid = null;
    porque o toggle não pode re-renderizar o formulário: destruiria o que a
    pessoa já escreveu nos campos. */
 let exScope = 'me';
+/* Foto escolhida no editor, à espera de Guardar. `exPhotoDraft` guarda o URL
+   já enviado para o bucket; `exPhotoReset` marca "voltar à automática". Ambos
+   vivem fora do sheet pela mesma razão que exScope: trocar a foto não pode
+   re-renderizar o formulário e apagar o que a pessoa já escreveu. Repostos
+   sempre que o sheet abre. */
+let exPhotoDraft = null;
+let exPhotoReset = false;
 
 /* =========================================================================
    ICONS — a single-weight stroked set drawn for this design.
@@ -40,6 +47,7 @@ const ICONS = {
   close:     IC('<path d="m6 6 12 12M18 6 6 18"/>', 2),
   edit:      IC('<path d="M4 20h4L19 9a2.1 2.1 0 0 0-3-3L5 17z"/><path d="M14.5 6.5 17.5 9.5"/>'),
   trash:     IC('<path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13"/>'),
+  heart:     IC('<path d="M12 20s-7-4.6-9.3-8.6A4.7 4.7 0 0 1 12 6a4.7 4.7 0 0 1 9.3 5.4C19 15.4 12 20 12 20Z"/>'),
   check:     IC('<path d="m5 13 4.5 4.5L19 7"/>', 2.2),
   sun:       IC('<circle cx="12" cy="12" r="3.8"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5 5l1.4 1.4M17.6 17.6 19 19M19 5l-1.4 1.4M6.4 17.6 5 19"/>'),
   moon:      IC('<path d="M20 14.5A7.5 7.5 0 1 1 10.2 4.3 6 6 0 0 0 20 14.5Z"/>'),
@@ -776,16 +784,234 @@ function renderHome(){
         </div>`).join('')}</div>`
     : `<div class="empty empty--flat"><p class="empty__p" style="margin:0">${t('hi_empty')}</p></div>`;
 
-  /* Phase 2 slot */
+  /* Community — live feed when the tables are reachable, else the static
+     "coming soon" panel so file:// and offline are exactly the old app. */
   html += sectionHead(t('h_community'));
-  html += `<div class="soon">
-    <p class="soon__t">${t('h_community_t')}</p>
-    <p class="soon__p">${t('h_community_p')}</p>
-  </div>`;
+  html += communitySection();
 
   html += `</div>`;
   setHTML('view', html);
   try{ initProgChart(); }catch(e){}
+}
+
+/* =========================================================================
+   COMMUNITY — the live feed on Home. State/network live in community.js;
+   everything drawn here goes through esc(). Falls back to the static panel
+   whenever the tables aren't reachable, so file:// and offline are unchanged.
+   ========================================================================= */
+/* Inline-edit and filter state live outside the render (like exScope) so a
+   redraw never destroys a half-typed edit or the active tag. */
+let commEditPost = null;      /* id of the post being edited inline    */
+let commEditComment = null;   /* id of the comment being edited inline */
+let commTagFilter = null;     /* active #hashtag filter (lowercased)   */
+
+/* Is `name` (a single @token) one of the known members? Matches a full name or
+   its first word, case-insensitive — so @Vanilson lights up "Vanilson Muhongo". */
+function communityIsMember(name){
+  const n = String(name || '').toLowerCase();
+  return (COMMUNITY.members || []).some(m=>{
+    const full = (m.name || '').toLowerCase();
+    return full === n || full.split(/\s+/)[0] === n;
+  });
+}
+
+/* Post/comment text with #hashtags and @mentions highlighted. Escape FIRST,
+   then wrap tags in controlled spans over the already-safe text: a tag can only
+   contain letters/digits/_, never <>&"', so the injected markup can't be
+   hijacked by user input. Hashtags become chips that filter the feed. */
+function renderBody(text){
+  let s = esc(String(text || ''));
+  s = s.replace(/(^|[\s(])#([\p{L}\p{N}_]{1,40})/gu, (m, pre, tag)=>
+    `${pre}<a class="ctag" data-act="ctag" data-a1="${esc(tag.toLowerCase())}">#${tag}</a>`);
+  s = s.replace(/(^|[\s(])@([\p{L}\p{N}_]{1,40})/gu, (m, pre, name)=>
+    communityIsMember(name) ? `${pre}<span class="cment">@${name}</span>` : m);
+  return s;
+}
+
+/* A post carries the tag if its body has it as a real #hashtag (word start). */
+function postHasTag(p, tag){
+  const safe = tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp('(^|[\\s(])#' + safe + '(?![\\p{L}\\p{N}_])', 'iu').test(p.body || '');
+}
+
+function communitySection(){
+  if(!COMMUNITY.ready){
+    return `<div class="soon">
+      <p class="soon__t">${t('h_community_t')}</p>
+      <p class="soon__p">${t('h_community_p')}</p>
+    </div>`;
+  }
+  const g = primaryGoal();
+  const composer = `<div class="ccompose">
+    <textarea class="textarea" id="cBody" rows="2" placeholder="${t('cm_placeholder')}" data-inp="cmention"></textarea>
+    <div class="flexr flexr--wrap">
+      ${g ? `<button class="btn btn--ghost btn--sm" data-act="cpostgoal">${t('cm_share_goal')}</button>` : ''}
+      <button class="btn btn--acc btn--sm" data-act="cpostnote">${t('cm_post')}</button>
+    </div>
+  </div>`;
+
+  let posts = COMMUNITY.posts;
+  let filterBar = '';
+  if(commTagFilter){
+    posts = posts.filter(p=> postHasTag(p, commTagFilter));
+    filterBar = `<div class="cfilter">
+      <span class="cfilter__t">#${esc(commTagFilter)}</span>
+      <button class="btn btn--ghost btn--sm" data-act="ctagclear">${t('cm_tagall')}</button>
+    </div>`;
+  }
+
+  const feed = posts.length
+    ? `<div class="cfeed">${posts.map(communityPost).join('')}</div>`
+    : `<div class="empty empty--flat"><p class="empty__p" style="margin:0">${t(commTagFilter ? 'cm_tagnone' : 'cm_empty')}</p></div>`;
+
+  return composer + filterBar + feed;
+}
+
+/* A photo-free snapshot of the goal the dashboard leads with — a still, not a
+   live reference, so sharing a goal never exposes the rest of private state. */
+function goalSnapshot(){
+  const g = primaryGoal();
+  if(!g) return null;
+  return { title: g.title || '', pct: goalPct(g), photo: g.photo ? goalPhoto(g.photo) : '' };
+}
+
+function communityPost(p){
+  const mine = p.author === (USER && USER.id);
+  const likes = COMMUNITY.likeCount[p.id] || 0;
+  const liked = !!COMMUNITY.liked[p.id];
+  const comments = COMMUNITY.comments[p.id] || [];
+  const goal = (p.kind === 'goal' && p.goal) ? p.goal : null;
+
+  const goalCard = goal ? `<div class="cgoal">
+      ${goal.photo ? `<span class="cgoal__img"><img src="${esc(goal.photo)}" alt=""></span>` : ''}
+      <div class="cgoal__body">
+        <p class="cgoal__t">${esc(goal.title || '')}</p>
+        <div class="cbar"><span style="width:${Math.max(0, Math.min(100, goal.pct|0))}%"></span></div>
+      </div>
+      <span class="cgoal__pct">${goal.pct|0}%</span>
+    </div>` : '';
+
+  /* body: static text with tags, or an inline editor when this post is being
+     edited (only ever your own — the edit button only renders for mine). */
+  const bodyBlock = (mine && commEditPost === p.id)
+    ? `<div class="cedit">
+        <textarea class="textarea" id="cedit_p_${esc(p.id)}" rows="2" data-inp="cmention">${esc(p.body || '')}</textarea>
+        <div class="flexr flexr--wrap">
+          <button class="btn btn--ghost btn--sm" data-act="cpcanceledit">${t('b_cancel')}</button>
+          <button class="btn btn--acc btn--sm" data-act="cpsavepost" data-a1="${esc(p.id)}">${t('b_save')}</button>
+        </div>
+      </div>`
+    : (p.body ? `<p class="cpost__b">${renderBody(p.body)}</p>` : '');
+
+  const thread = comments.map(c=>{
+    const cmine = c.author === (USER && USER.id);
+    if(cmine && commEditComment === c.id){
+      return `<div class="ccmt ccmt--edit">
+        <input class="input" id="cedit_c_${esc(c.id)}" value="${esc(c.body || '')}" data-inp="cmention">
+        <button class="btn btn--ghost btn--sm" data-act="ccmtcancel">${t('b_cancel')}</button>
+        <button class="btn btn--acc btn--sm" data-act="ccmtsave" data-a1="${esc(c.id)}">${t('b_save')}</button>
+      </div>`;
+    }
+    return `<div class="ccmt">
+      <span class="ccmt__n">${esc(communityName(c.author))}</span>
+      <span class="ccmt__b">${renderBody(c.body || '')}</span>
+      ${cmine ? `<span class="ccmt__acts">
+        <button class="ccmt__x" data-act="ccmtedit" data-a1="${esc(c.id)}" aria-label="${t('cm_edit')}">${ICONS.edit}</button>
+        <button class="ccmt__x" data-act="cdelcomment" data-a1="${esc(c.id)}" aria-label="${t('cm_delete')}">${ICONS.close}</button>
+      </span>` : ''}
+    </div>`;
+  }).join('');
+
+  return `<article class="cpost">
+    <header class="cpost__h">
+      <span class="cpost__n">${esc(communityName(p.author))}</span>
+      <span class="cpost__d">${esc(fmtDate(p.created_at))}</span>
+      ${mine ? `<span class="cpost__acts">
+        <button class="cpost__x" data-act="cpeditpost" data-a1="${esc(p.id)}" aria-label="${t('cm_edit')}">${ICONS.edit}</button>
+        <button class="cpost__x" data-act="cdelpost" data-a1="${esc(p.id)}" aria-label="${t('cm_delete')}">${ICONS.trash}</button>
+      </span>` : ''}
+    </header>
+    ${bodyBlock}
+    ${goalCard}
+    <div class="cpost__f">
+      <button class="clike ${liked ? 'is-on' : ''}" data-act="clike" data-a1="${esc(p.id)}" aria-pressed="${liked}">
+        ${ICONS.heart}<span>${likes}</span></button>
+    </div>
+    <div class="cthread">
+      ${thread}
+      <div class="caddc">
+        <input class="input" id="ccm_${esc(p.id)}" placeholder="${t('cm_comment_ph')}" data-inp="cmention">
+        <button class="btn btn--ghost btn--sm" data-act="caddcomment" data-a1="${esc(p.id)}">${t('cm_send')}</button>
+      </div>
+    </div>
+  </article>`;
+}
+
+/* Realtime told us the feed changed. Don't repaint over an open inline editor
+   or while the user is typing anywhere in the community — the same care the log
+   fields and set chips take elsewhere. */
+function onCommunityRefreshed(){
+  if(commEditPost || commEditComment) return;
+  const a = document.activeElement;
+  if(a && a.closest && a.closest('.cfeed, .ccompose')) return;
+  if(typeof rerender === 'function' && view === 'home') rerender();
+}
+
+/* ---- @mention autocomplete ---------------------------------------------
+   One shared dropdown appended to <body>, positioned under the focused field.
+   Driven by INPUTS.cmention on every community text field; picking inserts the
+   member's first-name handle. No re-render, so it never eats what's typed. */
+function mentionBox(){
+  let b = document.getElementById('cmentionbox');
+  if(!b){
+    b = document.createElement('div');
+    b.id = 'cmentionbox';
+    b.className = 'cment-box';
+    b.style.display = 'none';
+    document.body.appendChild(b);
+  }
+  return b;
+}
+function hideMentionBox(){ const b = document.getElementById('cmentionbox'); if(b) b.style.display = 'none'; }
+function mentionToken(node){
+  const upto = node.value.slice(0, node.selectionStart == null ? node.value.length : node.selectionStart);
+  const m = upto.match(/@([\p{L}\p{N}_]*)$/u);
+  return m ? m[1] : null;
+}
+function showMentions(node){
+  const tok = mentionToken(node);
+  if(tok === null){ hideMentionBox(); return; }
+  const q = tok.toLowerCase();
+  const seen = {};
+  const hits = (COMMUNITY.members || []).filter(m=>{
+    const h = (m.name || '').split(/\s+/)[0];
+    if(!h || seen[h.toLowerCase()]) return false;
+    seen[h.toLowerCase()] = 1;
+    return h.toLowerCase().indexOf(q) === 0;
+  }).slice(0, 6);
+  if(!hits.length){ hideMentionBox(); return; }
+  const box = mentionBox();
+  box.innerHTML = hits.map(m=>{
+    const h = esc((m.name || '').split(/\s+/)[0]);
+    return `<button type="button" class="cment-opt" data-act="cmentionpick" data-a1="${h}" data-a2="${esc(node.id)}">@${h}</button>`;
+  }).join('');
+  const r = node.getBoundingClientRect();
+  box.style.left = Math.round(r.left) + 'px';
+  box.style.top  = Math.round(r.bottom + 4) + 'px';
+  box.style.width = Math.round(r.width) + 'px';
+  box.style.display = 'block';
+}
+function insertMention(fieldId, handle){
+  const node = el(fieldId);
+  if(!node) return;
+  const pos = node.selectionStart == null ? node.value.length : node.selectionStart;
+  const before = node.value.slice(0, pos).replace(/@([\p{L}\p{N}_]*)$/u, '@' + handle + ' ');
+  const after = node.value.slice(pos);
+  node.value = before + after;
+  hideMentionBox();
+  node.focus();
+  const caret = before.length;
+  try{ node.setSelectionRange(caret, caret); }catch(e){}
 }
 
 /* =========================================================================
@@ -918,6 +1144,38 @@ function cardioCard(id){
   </article>`;
 }
 
+/* Poster for a built-in on the current day: a photo the user set by hand wins
+   over the auto-match, exactly like customPhoto() does for their own exercises.
+   The override lives on the day-scoped ovr record, so it needs curDay — which is
+   why exPhoto() (day-agnostic) can't do this itself. */
+function exPosterFor(exId){
+  const o = STATE.ovr && STATE.ovr[curDay + ':' + exId];
+  return (o && o.photo) ? o.photo : exPhoto(exId);
+}
+
+/* Write the chosen photo into the user's PRIVATE state — always private, even
+   when the prescription is published to everyone. Only touches state when the
+   user actually changed the photo this session (uploaded or reset), so an edit
+   that left the photo alone keeps whatever was there. For built-ins the photo
+   rides on the day-scoped ovr record; a photo-only ovr is harmless — every
+   prescription field falls back to the plan (see exCard). */
+function applyPhotoOverride(mode, id){
+  if(!exPhotoDraft && !exPhotoReset) return;
+  const photo = exPhotoReset ? '' : exPhotoDraft;
+  if(mode === 'custom'){
+    const c = (STATE.custom[curDay] || []).find(x=> x.id === parseInt(id,10));
+    if(c){ if(photo) c.photo = photo; else delete c.photo; }
+  }else if(mode === 'builtin'){
+    const key = curDay + ':' + id;
+    if(photo){ STATE.ovr[key] = Object.assign({}, STATE.ovr[key], { photo }); }
+    else if(STATE.ovr[key]){
+      delete STATE.ovr[key].photo;
+      if(!Object.keys(STATE.ovr[key]).length) delete STATE.ovr[key];
+    }
+  }
+  saveState();
+}
+
 /* ---- built-in exercise card ---- */
 function exCard(it, i){
   const e = EX[it.ex];
@@ -933,7 +1191,7 @@ function exCard(it, i){
 
   return `<article class="excard ${isOpen ? 'is-open' : ''}">
     <button class="excard__h" data-act="toggleex" data-a1="${i}">
-      <span class="excard__thumb"><img src="${exPhoto(it.ex)}" alt="" loading="lazy"></span>
+      <span class="excard__thumb"><img src="${exPosterFor(it.ex)}" alt="" loading="lazy"></span>
       <span class="excard__t">
         <span class="excard__n">${esc(nm)}</span>
         <span class="excard__sub">${esc((ovr && ovr.eq) || L(e.eq))}</span>
@@ -1021,7 +1279,7 @@ function setChips(exId, sets, done){
 }
 
 function execPanel(id, e){
-  return `${videoBlock(VIDEOS[id], exPhoto(id), exName(e))}
+  return `${videoBlock(VIDEOS[id], exPosterFor(id), exName(e))}
     <h4 class="blkt">${t('e_steps')}</h4>
     <ol class="steps">${LA(e.steps).map(s=>`<li>${esc(s)}</li>`).join('')}</ol>
     <h4 class="blkt">${t('e_safe')}</h4>
@@ -1761,17 +2019,30 @@ const ACTIONS = {
     if(hint) hint.textContent = t(scope === 'all' ? 'sh_scope_all' : 'sh_scope_me');
   },
 
+  /* Repor a foto automática: marca o reset e mostra já a foto que o auto-match
+     devolveria, para a pré-visualização não mentir. Não re-renderiza o sheet. */
+  exphotoreset: ()=>{
+    exPhotoReset = true; exPhotoDraft = null;
+    const img = el('exPhotoImg');
+    if(!img) return;
+    const inp = document.querySelector('#fExPhoto input[type="file"]');
+    const key = inp && inp.dataset.a1;
+    img.src = (key && EX[key])
+      ? exPhoto(key)
+      : customPhoto({ name: fieldVal('exName'), eq: fieldVal('exEq') });
+  },
+
   exadd: ()=>{
-    exScope = 'me';
-    openSheet(t('m_add'), exFormHTML({}), `
+    exScope = 'me'; exPhotoDraft = null; exPhotoReset = false;
+    openSheet(t('m_add'), exFormHTML({}, { photoKey:'new', photo:customPhoto({}) }), `
       <button class="btn btn--ghost" data-act="closesheet">${t('b_cancel')}</button>
       <button class="btn btn--acc" data-act="exsave" data-a1="add">${t('b_save')}</button>`);
   },
   exeditcustom: (el2,id)=>{
     const c = (STATE.custom[curDay] || []).find(x=> x.id === parseInt(id,10));
     if(!c) return;
-    exScope = 'me';
-    openSheet(t('m_edit'), exFormHTML(c), `
+    exScope = 'me'; exPhotoDraft = null; exPhotoReset = false;
+    openSheet(t('m_edit'), exFormHTML(c, { isEdit:true, photoKey:'c'+c.id, photo:customPhoto(c) }), `
       <button class="btn btn--ghost" data-act="closesheet">${t('b_cancel')}</button>
       <button class="btn btn--acc" data-act="exsave" data-a1="custom" data-a2="${c.id}">${t('b_save')}</button>`);
   },
@@ -1780,34 +2051,44 @@ const ACTIONS = {
     const it = DAYS.find(d=> d.id === curDay).items.find(x=> x.ex === exId);
     const b = it[curBlock];
     const o = STATE.ovr[curDay + ':' + exId] || {};
-    exScope = 'me';
+    exScope = 'me'; exPhotoDraft = null; exPhotoReset = false;
     openSheet(t('m_edit'), exFormHTML({
       name:o.name || exName(e), eq:o.eq || L(e.eq), s:o.s || b.s,
-      r:o.r || dtxt(b.r), l:o.l || dtxt(b.l), rest:o.rest || b.rest
-    }), `<button class="btn btn--ghost" data-act="closesheet">${t('b_cancel')}</button>
+      r:o.r || dtxt(b.r), l:o.l || dtxt(b.l), rest:o.rest || b.rest,
+      /* Prefill the current video so an edit that leaves this field untouched
+         keeps it — an override's own video first, else the built-in's YT id
+         (ytId() accepts a bare 11-char id). */
+      vid:o.vid || VIDEOS[exId] || ''
+    }, { isEdit:true, photoKey:exId, photo:exPosterFor(exId) }), `<button class="btn btn--ghost" data-act="closesheet">${t('b_cancel')}</button>
       <button class="btn btn--acc" data-act="exsave" data-a1="builtin" data-a2="${esc(exId)}">${t('b_save')}</button>`);
   },
   exsave: async (el2, mode, id)=>{
     const name = fieldVal('exName');
     if(!name){ toast(t('ts_needname')); return; }
-    /* Every exercise carries a demo video — there is no exercise you are meant
-       to perform without being able to see it done first. */
+    /* A demo video is required only when CREATING an exercise — every new one
+       should ship with a way to see it done. Editing is a PATCH: the video is
+       optional, an untouched field keeps the current video, and a field the
+       user cleared reverts to the built-in default. A broken link is never
+       saved, in any mode. */
     const raw = fieldVal('exVid');
     const vid = ytId(raw);
     const vf = el('fExVid');
-    if(!raw){
-      if(vf) vf.classList.add('is-bad');
-      toast(t('m_video_req'));
-      return;
-    }
-    if(!vid){
-      if(vf) vf.classList.add('is-bad');
-      toast(t('m_video_bad'));
-      return;
+    if(mode === 'add'){
+      if(!raw){ if(vf) vf.classList.add('is-bad'); toast(t('m_video_req')); return; }
+      if(!vid){ if(vf) vf.classList.add('is-bad'); toast(t('m_video_bad')); return; }
+    } else if(raw && !vid){
+      if(vf) vf.classList.add('is-bad'); toast(t('m_video_bad')); return;
     }
     if(vf) vf.classList.remove('is-bad');
     const obj = { name, eq:fieldVal('exEq'), s:fieldVal('exSets'),
-      r:fieldVal('exReps'), l:fieldVal('exLoad'), rest:fieldVal('exRest'), vid };
+      r:fieldVal('exReps'), l:fieldVal('exLoad'), rest:fieldVal('exRest') };
+    /* Only carry the video when one was actually provided, so a blank field on
+       edit does not wipe the existing video. */
+    if(vid) obj.vid = vid;
+
+    /* The photo is always private, independent of the me/all toggle — persist
+       it up-front so it survives even when the prescription is published. */
+    applyPhotoOverride(mode, id);
 
     /* Para toda a gente: a alteração vai à nuvem e volta pelo realtime.
        Nada é escrito no estado privado — se a escrita falhar ou colidir, o
@@ -1815,10 +2096,11 @@ const ACTIONS = {
     if(exScope === 'all' && SHARED.ready){
       let res;
       if(mode === 'builtin'){
-        res = await saveSharedExercise(id, {
-          ...langPatchName(id, name), ...langPatchEq(id, obj.eq),
-          video_id: vid || null, status:'published'
-        });
+        const patch = { ...langPatchName(id, name), ...langPatchEq(id, obj.eq), status:'published' };
+        /* omit video_id when blank so an edit that left it alone keeps the
+           shared row's current video instead of nulling it */
+        if(vid) patch.video_id = vid;
+        res = await saveSharedExercise(id, patch);
         if(res.ok) res = await patchSharedItem(curDay, id, curBlock,
           { s:obj.s, r:obj.r, l:obj.l, rest:obj.rest });
       } else {
@@ -1836,12 +2118,17 @@ const ACTIONS = {
 
     if(mode === 'add'){
       if(!STATE.custom[curDay]) STATE.custom[curDay] = [];
-      STATE.custom[curDay].push(Object.assign({ id: nextId() }, obj));
+      const rec = Object.assign({ id: nextId() }, obj);
+      if(exPhotoDraft && !exPhotoReset) rec.photo = exPhotoDraft;
+      STATE.custom[curDay].push(rec);
     } else if(mode === 'custom'){
       const c = (STATE.custom[curDay] || []).find(x=> x.id === parseInt(id,10));
-      if(c) Object.assign(c, obj);
+      if(c) Object.assign(c, obj);   /* obj has no photo key; c.photo (set above) survives */
     } else if(mode === 'builtin'){
-      STATE.ovr[curDay + ':' + id] = obj;
+      /* merge, not replace, so the photo applyPhotoOverride() set is not lost —
+         the form prefills every prescription field, so merging still overwrites
+         them all with the current values. */
+      STATE.ovr[curDay + ':' + id] = Object.assign({}, STATE.ovr[curDay + ':' + id], obj);
     }
     saveState(); closeSheet(); renderTrain(); toast(t('ts_saved'));
   },
@@ -1859,6 +2146,88 @@ const ACTIONS = {
     saveState(); renderTrain(); toast(t('ts_restored'));
   },
   savesession: ()=> saveSession(),
+
+  /* community — writes live in community.js; these just gather input, call,
+     and repaint. rerender() after our own write shows the result and clears
+     the field the user typed in. */
+  cpostnote: async (btn)=>{
+    const body = (el('cBody') || {}).value || '';
+    if(!body.trim()){ toast(t('ts_needname')); return; }
+    btn.disabled = true;
+    const res = await postToCommunity({ kind:'note', body });
+    btn.disabled = false;
+    if(!res.ok){ toast(t(res.reason === 'empty' ? 'ts_needname' : 'cm_err')); return; }
+    toast(t('cm_posted')); if(view === 'home') rerender();
+  },
+  cpostgoal: async (btn)=>{
+    const goal = goalSnapshot();
+    if(!goal){ toast(t('cm_err')); return; }
+    btn.disabled = true;
+    const res = await postToCommunity({ kind:'goal', body:(el('cBody')||{}).value || '', goal });
+    btn.disabled = false;
+    if(!res.ok){ toast(t('cm_err')); return; }
+    toast(t('cm_posted')); if(view === 'home') rerender();
+  },
+  clike: async (btn, id)=>{
+    btn.disabled = true;
+    const res = await toggleLike(id);
+    btn.disabled = false;
+    if(!res.ok){ toast(t('cm_err')); return; }
+    if(view === 'home') rerender();
+  },
+  caddcomment: async (btn, id)=>{
+    const inp = el('ccm_' + id);
+    const body = inp ? inp.value : '';
+    if(!body.trim()){ return; }
+    btn.disabled = true;
+    const res = await commentOnPost(id, body);
+    btn.disabled = false;
+    if(!res.ok){ toast(t(res.reason === 'empty' ? 'ts_needname' : 'cm_err')); return; }
+    if(view === 'home') rerender();
+  },
+  cdelpost: async (btn, id)=>{
+    if(!confirm(t('cm_del_confirm'))) return;
+    const res = await softDeleteCommunity('post', id);
+    if(!res.ok){ toast(t('cm_err')); return; }
+    if(view === 'home') rerender();
+  },
+  cdelcomment: async (btn, id)=>{
+    if(!confirm(t('cm_del_confirm'))) return;
+    const res = await softDeleteCommunity('comment', id);
+    if(!res.ok){ toast(t('cm_err')); return; }
+    if(view === 'home') rerender();
+  },
+  /* edit own post / comment — inline. Enter edit mode is a pure re-render;
+     the guard in onCommunityRefreshed keeps realtime from wiping the editor. */
+  cpeditpost: (btn, id)=>{ commEditComment = null; commEditPost = id; hideMentionBox(); if(view === 'home') rerender(); },
+  cpcanceledit: ()=>{ commEditPost = null; if(view === 'home') rerender(); },
+  cpsavepost: async (btn, id)=>{
+    const node = el('cedit_p_' + id);
+    const body = node ? node.value : '';
+    if(!body.trim()){ toast(t('ts_needname')); return; }
+    btn.disabled = true;
+    const res = await updatePost(id, body);
+    btn.disabled = false;
+    if(!res.ok){ toast(t(res.reason === 'empty' ? 'ts_needname' : 'cm_err')); return; }
+    commEditPost = null; toast(t('cm_edited')); if(view === 'home') rerender();
+  },
+  ccmtedit: (btn, id)=>{ commEditPost = null; commEditComment = id; hideMentionBox(); if(view === 'home') rerender(); },
+  ccmtcancel: ()=>{ commEditComment = null; if(view === 'home') rerender(); },
+  ccmtsave: async (btn, id)=>{
+    const node = el('cedit_c_' + id);
+    const body = node ? node.value : '';
+    if(!body.trim()){ toast(t('ts_needname')); return; }
+    btn.disabled = true;
+    const res = await updateComment(id, body);
+    btn.disabled = false;
+    if(!res.ok){ toast(t(res.reason === 'empty' ? 'ts_needname' : 'cm_err')); return; }
+    commEditComment = null; toast(t('cm_edited')); if(view === 'home') rerender();
+  },
+  /* hashtags: tap a #tag to filter the feed; clear to show all */
+  ctag: (btn, tag)=>{ commTagFilter = tag || null; hideMentionBox(); if(view === 'home') rerender(); },
+  ctagclear: ()=>{ commTagFilter = null; if(view === 'home') rerender(); },
+  /* @mention: insert the picked member into the field the dropdown belongs to */
+  cmentionpick: (btn, handle, fieldId)=> insertMention(fieldId, handle),
 
   /* goals */
   goalnew: ()=>{
@@ -2075,7 +2444,11 @@ const ACTIONS = {
   geye:      (btn,id)=> gEye(id, btn)
 };
 
-function exFormHTML(c){
+function exFormHTML(c, opts){
+  opts = opts || {};
+  const isEdit = !!opts.isEdit;
+  const photoKey = esc(opts.photoKey || 'ex');
+  const poster = esc(opts.photo || '');
   return `<label class="field"><span class="field__l">${t('m_name')}</span>
       <input class="input" id="exName" value="${esc(c.name || '')}" placeholder="${t('m_name_ph')}"></label>
     <label class="field"><span class="field__l">${t('m_eq')}</span>
@@ -2095,8 +2468,20 @@ function exFormHTML(c){
     <div class="field" id="fExVid">
       <span class="field__l">${t('m_video')}</span>
       <input class="input" id="exVid" value="${esc(c.vid || '')}" placeholder="${t('m_video_ph')}">
-      <span class="field__hint">${t('m_video_hint')}</span>
+      <span class="field__hint">${t(isEdit ? 'm_video_opt' : 'm_video_hint')}</span>
       <span class="field__err">${t('m_video_bad')}</span>
+    </div>
+    <div class="field" id="fExPhoto">
+      <span class="field__l">${t('m_photo')}</span>
+      <div class="exphoto">
+        <span class="exphoto__thumb"><img id="exPhotoImg" src="${poster}" alt=""></span>
+        <div class="exphoto__ctrl">
+          <label class="btn btn--ghost btn--sm exphoto__pick">${t('m_photo_change')}
+            <input type="file" accept="image/*" data-inp="exphoto" data-a1="${photoKey}" hidden></label>
+          <button type="button" class="btn btn--ghost btn--sm" data-act="exphotoreset">${t('m_photo_reset')}</button>
+        </div>
+      </div>
+      <span class="field__hint">${t('m_photo_hint')}</span>
     </div>
     ${scopeFieldHTML()}`;
 }
@@ -2150,7 +2535,27 @@ const INPUTS = {
   /* gate: clear a field's error state as soon as the user edits it */
   gclr: (node, fieldId)=> gClr(fieldId),
   gpw:  ()=> gPw(),
-  importfile: (node)=> importData(node)
+  importfile: (node)=> importData(node),
+
+  /* Foto do exercício: encolhe e envia já ao escolher o ficheiro, e troca a
+     miniatura para feedback imediato. O URL fica em espera até Guardar. */
+  exphoto: async (node, key)=>{
+    const file = node.files && node.files[0];
+    if(!file) return;
+    if(file.size > 8 * 1024 * 1024){ toast(t('m_photo_big')); node.value = ''; return; }
+    toast(t('m_photo_up'));
+    const res = await uploadExercisePhoto(file, key);
+    node.value = '';
+    if(!res.ok){ toast(t('m_photo_err')); return; }
+    exPhotoDraft = res.url; exPhotoReset = false;
+    const img = el('exPhotoImg');
+    if(img) img.src = res.url;
+    toast(t('m_photo_ok'));
+  },
+
+  /* @mention autocomplete — updates the shared dropdown as the user types in
+     any community text field. Pure DOM, no re-render, so it never eats input. */
+  cmention: (node)=> showMentions(node)
 };
 
 /* =========================================================================
@@ -2188,9 +2593,19 @@ document.addEventListener('submit', e=>{
 document.addEventListener('click', e=>{
   if(e.target.id === 'sheet') closeSheet();
 });
-/* Esc closes an open sheet */
+/* dismiss the @mention dropdown when clicking away from it and its field */
+document.addEventListener('click', e=>{
+  if(typeof hideMentionBox !== 'function') return;
+  const t = e.target;
+  if(t.closest && (t.closest('#cmentionbox') || t.closest('[data-inp="cmention"]'))) return;
+  hideMentionBox();
+});
+/* Esc closes an open sheet, or the mention dropdown if one is showing */
 document.addEventListener('keydown', e=>{
-  if(e.key === 'Escape' && el('sheet').classList.contains('is-open')) closeSheet();
+  if(e.key !== 'Escape') return;
+  const mb = document.getElementById('cmentionbox');
+  if(mb && mb.style.display !== 'none'){ hideMentionBox(); return; }
+  if(el('sheet').classList.contains('is-open')) closeSheet();
 });
 
 /* =========================================================================

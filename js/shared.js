@@ -49,6 +49,55 @@ function mediaUrl(path){
   return SUPA_URL + '/storage/v1/object/public/' + MEDIA_BUCKET + '/' + path;
 }
 
+/* Encolhe uma imagem no browser antes de a enviar: lado maior a 1080px, JPEG
+   ~0.82. Mantém o bucket leve e o upload rápido, e o cartão nunca precisa de
+   um ficheiro maior do que a miniatura que desenha. Se o canvas falhar por
+   algum motivo, devolve o ficheiro original em vez de rebentar. */
+function downscaleImage(file, max, quality){
+  return new Promise((resolve)=>{
+    try{
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = ()=>{
+        try{
+          const scale = Math.min(1, max / Math.max(img.width, img.height));
+          const w = Math.max(1, Math.round(img.width * scale));
+          const h = Math.max(1, Math.round(img.height * scale));
+          const cv = document.createElement('canvas');
+          cv.width = w; cv.height = h;
+          cv.getContext('2d').drawImage(img, 0, 0, w, h);
+          URL.revokeObjectURL(url);
+          cv.toBlob(b=> resolve(b || file), 'image/jpeg', quality || 0.82);
+        }catch(e){ URL.revokeObjectURL(url); resolve(file); }
+      };
+      img.onerror = ()=>{ URL.revokeObjectURL(url); resolve(file); };
+      img.src = url;
+    }catch(e){ resolve(file); }
+  });
+}
+
+/* Envia a foto que a pessoa escolheu para um exercício e devolve o URL público.
+   O ficheiro fica sob a pasta do próprio utilizador. É a única imagem gerada
+   pelo utilizador que a app guarda — fica PRIVADA no estado dela (o URL só é
+   escrito no user_state privado); o bucket é de leitura pública mas os URLs não
+   são enumeráveis nem aparecem a mais ninguém. `key` é só para nomear o ficheiro
+   (id do exercício ou 'c<id>'), não é onde se guarda a referência. */
+async function uploadExercisePhoto(file, key){
+  if(!sb || !USER || !file) return { ok:false, reason:'offline' };
+  try{
+    const blob = await downscaleImage(file, 1080, 0.82);
+    const safeKey = String(key || 'ex').replace(/[^a-z0-9_-]+/gi, '').slice(0, 32) || 'ex';
+    const path = 'user/' + USER.id + '/' + safeKey + '-' + Date.now() + '.jpg';
+    const { error } = await sb.storage.from(MEDIA_BUCKET)
+      .upload(path, blob, { upsert:true, contentType:'image/jpeg' });
+    if(error) throw error;
+    return { ok:true, url: mediaUrl(path) };
+  }catch(e){
+    console.error('uploadExercisePhoto', e);
+    return { ok:false, reason:'error' };
+  }
+}
+
 /* ---- leitura ------------------------------------------------------------
    Uma passagem, três tabelas, em paralelo. Qualquer erro (incluindo "relation
    does not exist", que é o que se vê antes de correr o SQL) desliga o modo

@@ -379,6 +379,16 @@
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:var(--s3)}
 .grid2>.field{margin-bottom:0}
 
+/* exercise photo picker — a thumbnail of the current photo plus the controls
+   to replace it or fall back to the auto-match. The file input rides hidden
+   inside the "change" label, so the label is the button. */
+.exphoto{display:flex;align-items:center;gap:var(--s4)}
+.exphoto__thumb{flex:0 0 auto;width:4.5rem;height:4.5rem;border-radius:var(--r-md);
+  overflow:hidden;background:var(--surface-2);border:1px solid var(--line)}
+.exphoto__thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.exphoto__ctrl{display:flex;flex-wrap:wrap;gap:var(--s2)}
+.exphoto__pick{cursor:pointer}
+
 /* toggle */
 .switch{display:flex;align-items:center;justify-content:space-between;gap:var(--s4);
   padding:var(--s4) 0;border-bottom:1px solid var(--line)}
@@ -840,6 +850,85 @@
 .soon__t{font-family:var(--f-display);text-transform:uppercase;font-size:var(--t-md);
   letter-spacing:var(--tr-display);color:var(--ink-2)}
 .soon__p{font-size:var(--t-xs);color:var(--ink-3);margin-top:var(--s2)}
+
+/* =========================================================================
+   COMMUNITY — the live feed (Phase 2). Composer, post cards, likes, threads.
+   ========================================================================= */
+.ccompose{display:flex;flex-direction:column;gap:var(--s3);margin-bottom:var(--s5)}
+.ccompose .flexr{justify-content:flex-end}
+
+.cfeed{display:flex;flex-direction:column;gap:var(--s4)}
+.cpost{background:var(--surface-2);border:1px solid var(--line);
+  border-radius:var(--r-lg);padding:var(--s4)}
+.cpost__h{display:flex;align-items:baseline;gap:var(--s3)}
+.cpost__n{font-weight:800;font-size:var(--t-sm)}
+.cpost__d{font-size:var(--t-xxs);color:var(--ink-3)}
+.cpost__x,.ccmt__x{margin-left:auto;background:none;border:0;color:var(--ink-3);
+  cursor:pointer;padding:0;line-height:0;display:inline-flex}
+.cpost__x svg{width:16px;height:16px}
+.cpost__x:hover,.ccmt__x:hover{color:var(--neg)}
+.cpost__b{margin-top:var(--s2);font-size:var(--t-sm);line-height:var(--lh-body);
+  white-space:pre-wrap;word-break:break-word}
+
+/* shared goal snapshot inside a post */
+.cgoal{display:flex;align-items:center;gap:var(--s3);margin-top:var(--s3);
+  padding:var(--s3);background:var(--surface-3);border-radius:var(--r-md)}
+.cgoal__img{flex:0 0 auto;width:2.75rem;height:2.75rem;border-radius:var(--r-sm);
+  overflow:hidden;background:var(--surface-2)}
+.cgoal__img img{width:100%;height:100%;object-fit:cover;display:block}
+.cgoal__body{flex:1;min-width:0}
+.cgoal__t{font-weight:700;font-size:var(--t-sm);white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis}
+.cgoal__pct{font-weight:800;font-size:var(--t-sm);color:var(--acc)}
+.cbar{height:6px;border-radius:99px;background:var(--line);overflow:hidden;margin-top:var(--s2)}
+.cbar>span{display:block;height:100%;background:var(--acc-fill);border-radius:99px}
+
+.cpost__f{margin-top:var(--s3)}
+.clike{display:inline-flex;align-items:center;gap:var(--s2);background:none;
+  border:1px solid var(--line);border-radius:99px;padding:.3rem .7rem;cursor:pointer;
+  color:var(--ink-3);font-weight:700;font-size:var(--t-xs);transition:color var(--d-fast),border-color var(--d-fast)}
+.clike svg{width:16px;height:16px}
+.clike.is-on{color:var(--acc);border-color:var(--acc-line)}
+.clike.is-on svg{fill:var(--acc);stroke:var(--acc)}
+
+.cthread{margin-top:var(--s3);display:flex;flex-direction:column;gap:var(--s2)}
+.ccmt{display:flex;align-items:baseline;gap:var(--s2);font-size:var(--t-sm);
+  padding:var(--s2) 0;border-top:1px solid var(--line)}
+.ccmt__n{font-weight:800;flex:0 0 auto}
+.ccmt__b{flex:1;min-width:0;word-break:break-word;color:var(--ink-2)}
+.ccmt__acts{margin-left:auto;display:inline-flex;gap:var(--s2);flex:0 0 auto}
+.ccmt__x svg{width:14px;height:14px}
+.caddc{display:flex;gap:var(--s2);margin-top:var(--s2)}
+.caddc .input{padding:.5rem var(--s3)}
+
+/* post/comment action clusters (edit + delete) */
+.cpost__acts{margin-left:auto;display:inline-flex;gap:var(--s3);flex:0 0 auto}
+.cpost__acts .cpost__x{margin-left:0}
+
+/* #hashtags and @mentions inside rendered bodies */
+.ctag{color:var(--acc);font-weight:700;cursor:pointer;text-decoration:none}
+.ctag:hover{text-decoration:underline}
+.cment{color:var(--acc);font-weight:700}
+
+/* active-tag filter bar */
+.cfilter{display:flex;align-items:center;justify-content:space-between;gap:var(--s3);
+  margin:0 0 var(--s3);padding:var(--s2) var(--s3);background:var(--surface-2);
+  border:1px solid var(--acc-line);border-radius:var(--r-md)}
+.cfilter__t{font-weight:800;color:var(--acc)}
+
+/* inline edit boxes for a post / comment */
+.cedit{display:flex;flex-direction:column;gap:var(--s2);margin-top:var(--s2)}
+.cedit .flexr{justify-content:flex-end}
+.ccmt--edit{display:flex;align-items:center;gap:var(--s2)}
+.ccmt--edit .input{flex:1;padding:.4rem var(--s3)}
+
+/* @mention autocomplete dropdown (appended to <body>, positioned in JS) */
+.cment-box{position:fixed;z-index:120;background:var(--surface-3);
+  border:1px solid var(--line-strong);border-radius:var(--r-md);
+  box-shadow:0 12px 30px rgba(0,0,0,.45);overflow:hidden;max-height:14rem;overflow-y:auto}
+.cment-opt{display:block;width:100%;text-align:left;background:none;border:0;
+  color:var(--ink);font-weight:700;font-size:var(--t-sm);padding:.55rem var(--s3);cursor:pointer}
+.cment-opt:hover{background:var(--surface-2);color:var(--acc)}
 
 /* =========================================================================
    utilities

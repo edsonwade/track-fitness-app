@@ -399,7 +399,7 @@ function initCloud(){
     sb.auth.getSession().then(({data})=>{
       USER = data && data.session ? data.session.user : null;
       applyGate();
-      if(USER){ cloudPull(); catalogSync(); }
+      if(USER){ cloudPull(); catalogSync(); communitySync(); }
     });
     sb.auth.onAuthStateChange((_e, session)=>{
       if(signingUp) return;
@@ -413,8 +413,8 @@ function initCloud(){
          Só se refaz o trabalho quando o utilizador MUDA — um token renovado
          não muda dados nenhuns, e voltar a puxar tudo a cada renovação era a
          segunda razão para o ecrã se redesenhar sozinho a meio de uma série. */
-      if(USER){ if(was !== now){ cloudPull(); catalogSync(); } }
-      else catalogUnsubscribe();
+      if(USER){ if(was !== now){ cloudPull(); catalogSync(); communitySync(); } }
+      else { catalogUnsubscribe(); communityUnsubscribe(); }
     });
   }catch(e){ sb = null; gateMsg(t('g_srverr')); }
 }
