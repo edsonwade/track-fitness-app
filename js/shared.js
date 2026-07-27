@@ -254,7 +254,7 @@ async function saveSharedExercise(exKey, patch){
     }
     await catalogPull(true);
     return { ok:true };
-  }catch(e){ return { ok:false, reason:'error' }; }
+  }catch(e){ return { ok:false, reason:'error', msg: errText(e) }; }
 }
 
 async function saveSharedDay(dayNo, patch){
@@ -276,14 +276,23 @@ async function saveSharedDay(dayNo, patch){
     }
     await catalogPull(true);
     return { ok:true };
-  }catch(e){ return { ok:false, reason:'error' }; }
+  }catch(e){ return { ok:false, reason:'error', msg: errText(e) }; }
+}
+
+/* A mensagem verdadeira que o Postgres/Supabase devolveu. Sem isto o utilizador
+   só via "sem ligação" quando na verdade era permissão, coluna ou RLS — e a
+   edição desaparecia sem explicação. Mostrar a causa real é o que torna um
+   "Toda a gente" que falha diagnosticável em vez de misterioso. */
+function errText(e){
+  if(!e) return 'erro desconhecido';
+  return [e.message, e.details, e.hint].filter(Boolean).join(' · ') || String(e);
 }
 
 /* Resposta comum às duas escritas, para o ui.js não repetir a mesma cadeia
    de ifs em cada handler. */
 function reportShared(res){
   if(!res.ok && res.reason === 'conflict'){ toast(t('sh_conflict')); if(typeof rerender === 'function') rerender(); return false; }
-  if(!res.ok){ toast(t('sh_offline')); return false; }
+  if(!res.ok){ toast(res.msg ? ('⚠ ' + res.msg) : t('sh_offline')); return false; }
   toast(t('sh_pushed'));
   return true;
 }
