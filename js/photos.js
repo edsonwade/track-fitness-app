@@ -275,6 +275,9 @@ function exIdFromText(){
 /* Photo for a user-created exercise. Same contract as exPhoto(): never empty. */
 function customPhoto(c){
   if(!c) return IMG + PATTERN_IMG.squat;
+  /* A photo the user set by hand wins over every guess. Stored on the record
+     as a full URL (the Supabase bucket), the same shape EX_PHOTO_URL uses. */
+  if(c.photo) return c.photo;
   const key = 'c' + c.id;
   if(EX_PHOTO_URL[key]) return EX_PHOTO_URL[key];
   const id = exIdFromText(c.name, c.eq);
