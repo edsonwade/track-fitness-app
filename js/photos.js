@@ -10,6 +10,20 @@
 
 const IMG = 'img/';
 
+/* Neutral "no photo yet" tile for a user-created exercise that has no photo of
+   its own. It is a plain dumbbell glyph, deliberately NOT a photo of a real
+   person or a real exercise — a custom card must never borrow another
+   exercise's image and pass it off as the user's. Inline SVG data-URI so it
+   needs no file and works over file://. */
+const PLACEHOLDER_IMG =
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'%3E"
+  + "%3Crect width='120' height='120' fill='%232a2a2a'/%3E"
+  + "%3Cg fill='none' stroke='%23707070' stroke-width='5' stroke-linecap='round'%3E"
+  + "%3Cpath d='M42 60h36'/%3E"
+  + "%3Crect x='22' y='46' width='13' height='28' rx='3'/%3E"
+  + "%3Crect x='85' y='46' width='13' height='28' rx='3'/%3E"
+  + "%3C/g%3E%3C/svg%3E";
+
 /* ---- movement patterns -------------------------------------------------
    One photo per pattern rather than per exercise: there is no well-shot
    stock photo of a "seated calf raise", and a set of weak literal matches
@@ -272,18 +286,18 @@ function exIdFromText(){
   }
   return null;
 }
-/* Photo for a user-created exercise. Same contract as exPhoto(): never empty. */
+/* Photo for a user-created exercise. Never empty (contract of exPhoto()), but
+   it only ever returns a photo the USER actually provided — the one they set by
+   hand (stored full-URL on the record, same shape EX_PHOTO_URL uses) or one
+   uploaded to their private bucket. With neither, it returns the neutral
+   placeholder. It must NOT name-match or pattern-guess: borrowing another
+   exercise's stock photo showed the user an image they never added. */
 function customPhoto(c){
-  if(!c) return IMG + PATTERN_IMG.squat;
-  /* A photo the user set by hand wins over every guess. Stored on the record
-     as a full URL (the Supabase bucket), the same shape EX_PHOTO_URL uses. */
-  if(c.photo) return c.photo;
-  const key = 'c' + c.id;
-  if(EX_PHOTO_URL[key]) return EX_PHOTO_URL[key];
-  const id = exIdFromText(c.name, c.eq);
-  if(id && EX_IMG[id]) return IMG + EX_IMG[id];
-  const pat = patternFromText(c.name, c.eq);
-  return IMG + (PATTERN_IMG[pat] || PATTERN_IMG.squat);
+  if(c){
+    if(c.photo) return c.photo;
+    if(EX_PHOTO_URL['c' + c.id]) return EX_PHOTO_URL['c' + c.id];
+  }
+  return PLACEHOLDER_IMG;
 }
 function cardioPhoto(id){
   return IMG + (PATTERN_IMG[CARDIO_PATTERN[id]] || PATTERN_IMG.cardioTread);

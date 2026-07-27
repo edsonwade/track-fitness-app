@@ -170,14 +170,12 @@ function videoBlock(vid, poster, label){
       ${videoPoster(vid, poster, label)}
     </div>`;
 }
-/* Video for a user-created exercise. An exercise the user typed before the video
-   field was mandatory still resolves, by the same name match that finds its
-   photo — "Cable Crossover" is a crossover whether or not a link was pasted. */
+/* Video for a user-created exercise: only the link the user actually pasted.
+   No name-matching — a custom exercise must never show a built-in demo the user
+   never added. With no link, customCard's videoBlock() shows the "no demo yet"
+   note, exactly like the CARDIO entries. */
 function customVideo(c){
-  if(!c) return '';
-  if(c.vid) return c.vid;
-  const id = exIdFromText(c.name, c.eq);
-  return (id && VIDEOS[id]) || '';
+  return (c && c.vid) || '';
 }
 /* Deliberately WITHOUT `enablejsapi`. With it, the IFrame API is allowed to
    adopt this frame, and adopting rewrites its src to add a widget id. Closing
@@ -1153,6 +1151,15 @@ function exPosterFor(exId){
   return (o && o.photo) ? o.photo : exPhoto(exId);
 }
 
+/* Video for a built-in on the current day: a link the user typed in the edit
+   form (stored on the day-scoped ovr) wins over the shipped demo. Without this,
+   an edited video was saved to ovr.vid but the card kept playing VIDEOS[exId] —
+   the "I changed the video, it saved, then it came back to the old one" report. */
+function exVideoFor(exId){
+  const o = STATE.ovr && STATE.ovr[curDay + ':' + exId];
+  return (o && o.vid) || VIDEOS[exId] || '';
+}
+
 /* Write the chosen photo into the user's PRIVATE state — always private, even
    when the prescription is published to everyone. Only touches state when the
    user actually changed the photo this session (uploaded or reset), so an edit
@@ -1279,7 +1286,7 @@ function setChips(exId, sets, done){
 }
 
 function execPanel(id, e){
-  return `${videoBlock(VIDEOS[id], exPosterFor(id), exName(e))}
+  return `${videoBlock(exVideoFor(id), exPosterFor(id), exName(e))}
     <h4 class="blkt">${t('e_steps')}</h4>
     <ol class="steps">${LA(e.steps).map(s=>`<li>${esc(s)}</li>`).join('')}</ol>
     <h4 class="blkt">${t('e_safe')}</h4>
