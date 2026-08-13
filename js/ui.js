@@ -42,6 +42,8 @@ const ICONS = {
   play:      '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.2v13.6a1 1 0 0 0 1.5.87l11-6.8a1 1 0 0 0 0-1.72l-11-6.8A1 1 0 0 0 8 5.2z"/></svg>',
   chevron:   IC('<path d="m6 9 6 6 6-6"/>', 2),
   chevronR:  IC('<path d="m9 6 6 6-6 6"/>', 2),
+  arrowUp:   IC('<path d="M12 19V5M6 11l6-6 6 6"/>', 2),
+  arrowDown: IC('<path d="M12 5v14M6 13l6 6 6-6"/>', 2),
   back:      IC('<path d="M19 12H5m0 0 6-6m-6 6 6 6"/>', 2),
   plus:      IC('<path d="M12 5v14M5 12h14"/>', 2),
   close:     IC('<path d="m6 6 12 12M18 6 6 18"/>', 2),
@@ -1015,6 +1017,48 @@ function insertMention(fieldId, handle){
 /* =========================================================================
    TRAIN — day view with the week schedule integrated
    ========================================================================= */
+/* A lista de exercícios do dia — built-ins (não escondidos) + os próprios —
+   fundida numa só sequência e ordenada pela ordem PESSOAL do utilizador
+   (STATE.order[dia]). Uma chave sem posição guardada vai para o fim, na ordem
+   natural, por isso um exercício novo aparece no fim e nada some. É esta função
+   que renderTrain e o exmove partilham, para verem sempre a mesma ordem.
+   O `i` do built-in continua a ser o índice em d.items — é a identidade que o
+   abrir/fechar e o log usam, e reordenar não lhe pode mexer. */
+function orderedEntries(dayId){
+  const d = DAYS.find(x=> x.id === dayId);
+  if(!d) return [];
+  const entries = [];
+  (d.items || []).forEach((it,i)=>{
+    if(STATE.hidden[dayId + ':' + it.ex]) return;
+    entries.push({ key: it.ex, kind:'built', it, i });
+  });
+  (STATE.custom[dayId] || []).forEach(c=>{
+    entries.push({ key: 'c' + c.id, kind:'custom', c });
+  });
+  const ord = (STATE.order && STATE.order[dayId]) || [];
+  const pos = {}; ord.forEach((k,idx)=>{ pos[k] = idx; });
+  entries.forEach((e,n)=>{ e._n = n; });
+  entries.sort((a,b)=>{
+    const pa = (a.key in pos) ? pos[a.key] : (ord.length + a._n);
+    const pb = (b.key in pos) ? pos[b.key] : (ord.length + b._n);
+    return pa - pb;
+  });
+  return entries;
+}
+
+/* Os controlos ↑/↓ de cada cartão. Ficam SEMPRE visíveis (não é preciso abrir o
+   cartão), desativados no topo/fim. Só aparecem quando há mais do que um, senão
+   não há nada para reordenar. `key` identifica o cartão na ordem pessoal. */
+function moveRail(m){
+  if(!m) return '';
+  return `<div class="excard__move">
+    <button type="button" class="movebtn" data-act="exmove" data-a1="${esc(m.key)}" data-a2="up"
+      ${m.first ? 'disabled' : ''} aria-label="${t('tr_moveup')}">${ICONS.arrowUp}</button>
+    <button type="button" class="movebtn" data-act="exmove" data-a1="${esc(m.key)}" data-a2="down"
+      ${m.last ? 'disabled' : ''} aria-label="${t('tr_movedown')}">${ICONS.arrowDown}</button>
+  </div>`;
+}
+
 function renderTrain(){
   const td = todayId();
   if(!curDay) curDay = td;
@@ -1078,12 +1122,13 @@ function renderTrain(){
     html += sectionHead(L(d.name), '', '') ;
   }
 
-  /* exercises */
-  html += d.items.map((it,i)=>({it,i}))
-    .filter(x=> !STATE.hidden[curDay + ':' + x.it.ex])
-    .map(x=> exCard(x.it, x.i)).join('');
-
-  (STATE.custom[curDay] || []).forEach(c=>{ html += customCard(c); });
+  /* exercises — built-ins + custom, in the user's personal order, with ↑/↓ */
+  const entries = orderedEntries(curDay);
+  const many = entries.length > 1;
+  html += entries.map((e, pos)=>{
+    const meta = many ? { key:e.key, first: pos === 0, last: pos === entries.length - 1 } : null;
+    return e.kind === 'built' ? exCard(e.it, e.i, meta) : customCard(e.c, meta);
+  }).join('');
 
   const hidden = d.items.filter(it=> STATE.hidden[curDay + ':' + it.ex]).length;
   if(hidden){
@@ -1184,7 +1229,7 @@ function applyPhotoOverride(mode, id){
 }
 
 /* ---- built-in exercise card ---- */
-function exCard(it, i){
+function exCard(it, i, meta){
   const e = EX[it.ex];
   const base = it[curBlock];
   const isOpen = openCard === i;
@@ -1197,6 +1242,7 @@ function exCard(it, i){
   const nm = (ovr && ovr.name) || exName(e);
 
   return `<article class="excard ${isOpen ? 'is-open' : ''}">
+    <div class="excard__top">
     <button class="excard__h" data-act="toggleex" data-a1="${i}">
       <span class="excard__thumb"><img src="${exPosterFor(it.ex)}" alt="" loading="lazy"></span>
       <span class="excard__t">
@@ -1209,6 +1255,8 @@ function exCard(it, i){
       </span>
       <span class="excard__chev">${ICONS.chevron}</span>
     </button>
+    ${moveRail(meta)}
+    </div>
     <div class="excard__body">
       ${specStrip(p)}
       ${it.note ? `<p class="exnote">${esc(L(it.note))}</p>` : ''}
@@ -1321,11 +1369,12 @@ function blockPanel(it){
 }
 
 /* ---- user-created exercise ---- */
-function customCard(c){
+function customCard(c, meta){
   const key = 'c' + c.id;
   const isOpen = openCard === key;
   const lg = getLog(curDay, curBlock, key);
   return `<article class="excard ${isOpen ? 'is-open' : ''}">
+    <div class="excard__top">
     <button class="excard__h" data-act="togglecustom" data-a1="${c.id}">
       <span class="excard__thumb"><img src="${customPhoto(c)}" alt=""></span>
       <span class="excard__t">
@@ -1338,6 +1387,8 @@ function customCard(c){
       </span>
       <span class="excard__chev">${ICONS.chevron}</span>
     </button>
+    ${moveRail(meta)}
+    </div>
     <div class="excard__body">
       ${specStrip({ s:c.s || '—', r:c.r || '—', rpe:'—', l:c.l || '—', rest:c.rest || '—' })}
       ${logBlock(key, c.s, lg, c.rest, c.name)}
@@ -2188,6 +2239,25 @@ const ACTIONS = {
   restorehidden: ()=>{
     DAYS.find(x=> x.id === curDay).items.forEach(it=>{ delete STATE.hidden[curDay + ':' + it.ex]; });
     saveState(); renderTrain(); toast(t('ts_restored'));
+  },
+  /* Reordenar: troca o cartão com o vizinho na ordem PESSOAL do dia e guarda a
+     sequência inteira de chaves visíveis em STATE.order[dia]. Trabalha sobre a
+     mesma lista fundida que o render (orderedEntries), por isso built-ins e
+     exercícios próprios movem-se na mesma sequência. Privado — cada um tem a sua
+     ordem; não toca no catálogo partilhado. */
+  exmove: (btn, key, dir)=>{
+    const keys = orderedEntries(curDay).map(e=> e.key);
+    const idx = keys.indexOf(key);
+    if(idx < 0) return;
+    const j = dir === 'up' ? idx - 1 : idx + 1;
+    if(j < 0 || j >= keys.length) return;         /* já no topo/fim */
+    const tmp = keys[idx]; keys[idx] = keys[j]; keys[j] = tmp;
+    STATE.order = STATE.order || {};
+    STATE.order[curDay] = keys;
+    saveState(); renderTrain();
+    /* mantém o cartão movido à vista depois do re-render */
+    const moved = document.querySelector('[data-act="exmove"][data-a1="' + (window.CSS && CSS.escape ? CSS.escape(key) : key) + '"]');
+    if(moved && moved.scrollIntoView) moved.scrollIntoView({ block:'center', behavior:'smooth' });
   },
   savesession: ()=> saveSession(),
 
