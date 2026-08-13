@@ -115,6 +115,38 @@ create policy pl_delete on public.post_likes for delete to authenticated
   using (author = auth.uid());
 
 
+-- ---- 3b. reações (emojis) ------------------------------------------------
+-- Substitui o gosto único (❤️) por reações com emoji. A chave composta
+-- (post_id, author, emoji) deixa cada pessoa reagir com VÁRIOS emojis
+-- diferentes — um de cada tipo. Dar/tirar reação é insert/delete da própria
+-- linha, tal como o gosto: tirar uma reação não destrói conteúdo de ninguém,
+-- por isso aqui um DELETE verdadeiro faz sentido.
+create table if not exists public.post_reactions (
+  post_id    uuid not null references public.community_posts on delete cascade,
+  author     uuid not null references auth.users on delete cascade,
+  emoji      text not null,
+  created_at timestamptz not null default now(),
+  primary key (post_id, author, emoji)
+);
+
+alter table public.post_reactions enable row level security;
+
+drop policy if exists pr_read   on public.post_reactions;
+drop policy if exists pr_insert on public.post_reactions;
+drop policy if exists pr_delete on public.post_reactions;
+
+create policy pr_read on public.post_reactions for select to authenticated using (true);
+create policy pr_insert on public.post_reactions for insert to authenticated
+  with check (author = auth.uid());
+create policy pr_delete on public.post_reactions for delete to authenticated
+  using (author = auth.uid());
+
+-- migra os gostos existentes para uma reação ❤️, sem duplicar em nova corrida
+insert into public.post_reactions (post_id, author, emoji, created_at)
+  select post_id, author, '❤️', created_at from public.post_likes
+  on conflict do nothing;
+
+
 -- ---- 4. Realtime ---------------------------------------------------------
 -- Sem isto o websocket liga mas nunca recebe eventos.
 do $$
@@ -124,6 +156,8 @@ begin
   begin execute 'alter publication supabase_realtime add table public.post_comments';
   exception when duplicate_object then null; end;
   begin execute 'alter publication supabase_realtime add table public.post_likes';
+  exception when duplicate_object then null; end;
+  begin execute 'alter publication supabase_realtime add table public.post_reactions';
   exception when duplicate_object then null; end;
 end $$;
 

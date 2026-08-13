@@ -867,15 +867,25 @@
 /* =========================================================================
    COMMUNITY — the live feed (Phase 2). Composer, post cards, likes, threads.
    ========================================================================= */
-.ccompose{display:flex;flex-direction:column;gap:var(--s3);margin-bottom:var(--s5)}
-.ccompose .flexr{justify-content:flex-end}
+.ccompose{display:flex;flex-direction:column;gap:var(--s3);margin-bottom:var(--s5);
+  background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-lg);padding:var(--s4)}
+.ccompose .flexr{justify-content:flex-end;gap:var(--s2)}
 
 .cfeed{display:flex;flex-direction:column;gap:var(--s4)}
 .cpost{background:var(--surface-2);border:1px solid var(--line);
-  border-radius:var(--r-lg);padding:var(--s4)}
-.cpost__h{display:flex;align-items:baseline;gap:var(--s3)}
-.cpost__n{font-weight:800;font-size:var(--t-sm)}
+  border-radius:var(--r-lg);padding:var(--s4);transition:border-color var(--d-fast)}
+.cpost:hover{border-color:var(--line-strong)}
+.cpost__h{display:flex;align-items:center;gap:var(--s3)}
+.cpost__id{display:flex;flex-direction:column;gap:1px;min-width:0}
+.cpost__n{font-weight:800;font-size:var(--t-sm);line-height:1.1}
 .cpost__d{font-size:var(--t-xxs);color:var(--ink-3)}
+
+/* avatar chip: initials on a layered surface with a lime ring */
+.cavatar{flex:0 0 auto;width:2.1rem;height:2.1rem;border-radius:50%;
+  display:inline-flex;align-items:center;justify-content:center;
+  background:var(--surface-3);border:1.5px solid var(--acc-line);
+  color:var(--acc);font-weight:800;font-size:var(--t-xs);letter-spacing:.02em}
+.cavatar--sm{width:1.6rem;height:1.6rem;font-size:9px;border-width:1px}
 .cpost__x,.ccmt__x{margin-left:auto;background:none;border:0;color:var(--ink-3);
   cursor:pointer;padding:0;line-height:0;display:inline-flex}
 .cpost__x svg{width:16px;height:16px}
@@ -896,22 +906,38 @@
 .cbar{height:6px;border-radius:99px;background:var(--line);overflow:hidden;margin-top:var(--s2)}
 .cbar>span{display:block;height:100%;background:var(--acc-fill);border-radius:99px}
 
+/* reactions: a strip of emoji chips + an add button that opens the palette */
 .cpost__f{margin-top:var(--s3)}
-.clike{display:inline-flex;align-items:center;gap:var(--s2);background:none;
-  border:1px solid var(--line);border-radius:99px;padding:.3rem .7rem;cursor:pointer;
-  color:var(--ink-3);font-weight:700;font-size:var(--t-xs);transition:color var(--d-fast),border-color var(--d-fast)}
-.clike svg{width:16px;height:16px}
-.clike.is-on{color:var(--acc);border-color:var(--acc-line)}
-.clike.is-on svg{fill:var(--acc);stroke:var(--acc)}
+.creacts{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s2)}
+.creact{display:inline-flex;align-items:center;gap:.3rem;background:var(--surface-3);
+  border:1px solid var(--line);border-radius:99px;padding:.28rem .6rem;cursor:pointer;
+  color:var(--ink-2);font-weight:800;font-size:var(--t-xs);line-height:1;
+  transition:color var(--d-fast),border-color var(--d-fast),transform var(--d-fast)}
+.creact:hover{border-color:var(--line-strong)}
+.creact:active{transform:scale(.94)}
+.creact__e{font-size:1rem}
+.creact__n{min-width:.6rem;text-align:center}
+.creact.is-on{border-color:var(--acc);color:var(--acc)}
+.creact--add{color:var(--ink-3);padding:.28rem .5rem}
+.creact--add svg{width:17px;height:17px}
+.creact--add.is-open,.creact--add:hover{color:var(--acc);border-color:var(--acc-line)}
+.cpalette{display:flex;flex-wrap:wrap;gap:var(--s2);margin-top:var(--s2);padding:var(--s2);
+  background:var(--surface-3);border:1px solid var(--line);border-radius:var(--r-md)}
+.cpalette__e{font-size:1.25rem;line-height:1;background:none;border:1px solid transparent;
+  border-radius:var(--r-sm);padding:.25rem .35rem;cursor:pointer;
+  transition:transform var(--d-fast),background var(--d-fast),border-color var(--d-fast)}
+.cpalette__e:hover{transform:scale(1.15);background:var(--surface-2)}
+.cpalette__e.is-on{border-color:var(--acc)}
 
 .cthread{margin-top:var(--s3);display:flex;flex-direction:column;gap:var(--s2)}
-.ccmt{display:flex;align-items:baseline;gap:var(--s2);font-size:var(--t-sm);
+.ccmt{display:flex;align-items:flex-start;gap:var(--s2);font-size:var(--t-sm);
   padding:var(--s2) 0;border-top:1px solid var(--line)}
-.ccmt__n{font-weight:800;flex:0 0 auto}
-.ccmt__b{flex:1;min-width:0;word-break:break-word;color:var(--ink-2)}
-.ccmt__acts{margin-left:auto;display:inline-flex;gap:var(--s2);flex:0 0 auto}
+.ccmt__body{display:flex;flex-direction:column;gap:1px;flex:1;min-width:0}
+.ccmt__n{font-weight:800;font-size:var(--t-xs);color:var(--ink)}
+.ccmt__b{min-width:0;word-break:break-word;color:var(--ink-2)}
+.ccmt__acts{margin-left:auto;display:inline-flex;gap:var(--s2);flex:0 0 auto;padding-top:2px}
 .ccmt__x svg{width:14px;height:14px}
-.caddc{display:flex;gap:var(--s2);margin-top:var(--s2)}
+.caddc{display:flex;gap:var(--s2);margin-top:var(--s3)}
 .caddc .input{padding:.5rem var(--s3)}
 
 /* post/comment action clusters (edit + delete) */

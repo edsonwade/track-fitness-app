@@ -19,8 +19,7 @@ const COMMUNITY = {
   ready:false, live:false,
   posts:[],        /* [{id, author, body, kind, goal, created_at}] mais recente primeiro */
   comments:{},     /* postId -> [{id, author, body, created_at}] ordem cronológica       */
-  likeCount:{},    /* postId -> número de gostos                                          */
-  liked:{},        /* postId -> true se EU gostei                                         */
+  reactions:{},    /* postId -> { emoji: {count, mine} }  — reações por emoji             */
   names:{},        /* uuid   -> nome visível (de profiles)                                */
   members:[]       /* [{id, name}] únicos, para o autocomplete de @menções                */
 };
@@ -40,16 +39,16 @@ function communityName(uid){
 async function communityPull(){
   if(!sb || !USER) return false;
   try{
-    const [posts, comments, likes, profs] = await Promise.all([
+    const [posts, comments, reacts, profs] = await Promise.all([
       sb.from('community_posts').select('*').eq('deleted', false)
         .order('created_at', { ascending:false }).limit(100),
       sb.from('post_comments').select('*').eq('deleted', false)
         .order('created_at', { ascending:true }),
-      sb.from('post_likes').select('post_id, author'),
+      sb.from('post_reactions').select('post_id, author, emoji'),
       sb.from('profiles').select('id, name')
     ]);
-    if(posts.error || comments.error || likes.error){
-      throw (posts.error || comments.error || likes.error);
+    if(posts.error || comments.error){
+      throw (posts.error || comments.error);
     }
 
     COMMUNITY.posts = posts.data || [];
@@ -59,10 +58,14 @@ async function communityPull(){
       (COMMUNITY.comments[c.post_id] = COMMUNITY.comments[c.post_id] || []).push(c);
     });
 
-    COMMUNITY.likeCount = {}; COMMUNITY.liked = {};
-    (likes.data || []).forEach(l=>{
-      COMMUNITY.likeCount[l.post_id] = (COMMUNITY.likeCount[l.post_id] || 0) + 1;
-      if(l.author === USER.id) COMMUNITY.liked[l.post_id] = true;
+    /* Reações são acessórias: se a tabela ainda não existe (migração 002 por
+       correr) o mural fica de pé na mesma, apenas sem reações — como os nomes. */
+    COMMUNITY.reactions = {};
+    if(!reacts.error) (reacts.data || []).forEach(r=>{
+      const m = COMMUNITY.reactions[r.post_id] || (COMMUNITY.reactions[r.post_id] = {});
+      const cell = m[r.emoji] || (m[r.emoji] = { count:0, mine:false });
+      cell.count++;
+      if(r.author === USER.id) cell.mine = true;
     });
 
     COMMUNITY.names = {}; COMMUNITY.members = [];
@@ -140,18 +143,24 @@ async function updateComment(id, body){
   }catch(e){ return { ok:false, reason:'error' }; }
 }
 
-/* Gostar/desgostar = insert/delete da própria linha (chave composta garante um
-   por pessoa). Tirar um gosto é o único DELETE verdadeiro do mural — não
-   destrói conteúdo de ninguém. */
-async function toggleLike(postId){
+/* Reagir/desreagir com um emoji = insert/delete da própria linha (a chave
+   composta post_id+author+emoji garante uma reação de cada tipo por pessoa, mas
+   permite várias reações diferentes). Tirar uma reação é um DELETE verdadeiro —
+   não destrói conteúdo de ninguém. */
+async function toggleReaction(postId, emoji){
   if(!sb || !USER) return { ok:false, reason:'offline' };
+  emoji = String(emoji || '').trim();
+  if(!emoji) return { ok:false, reason:'empty' };
+  const cell = COMMUNITY.reactions[postId] && COMMUNITY.reactions[postId][emoji];
+  const mine = !!(cell && cell.mine);
   try{
-    if(COMMUNITY.liked[postId]){
-      const { error } = await sb.from('post_likes').delete()
-        .eq('post_id', postId).eq('author', USER.id);
+    if(mine){
+      const { error } = await sb.from('post_reactions').delete()
+        .eq('post_id', postId).eq('author', USER.id).eq('emoji', emoji);
       if(error) throw error;
     }else{
-      const { error } = await sb.from('post_likes').insert({ post_id: postId, author: USER.id });
+      const { error } = await sb.from('post_reactions')
+        .insert({ post_id: postId, author: USER.id, emoji });
       if(error) throw error;
     }
     await communityPull();
@@ -183,7 +192,7 @@ function communitySubscribe(){
     commChan = sb.channel('community')
       .on('postgres_changes', { event:'*', schema:'public', table:'community_posts' }, onCommunityChange)
       .on('postgres_changes', { event:'*', schema:'public', table:'post_comments'   }, onCommunityChange)
-      .on('postgres_changes', { event:'*', schema:'public', table:'post_likes'       }, onCommunityChange)
+      .on('postgres_changes', { event:'*', schema:'public', table:'post_reactions'   }, onCommunityChange)
       .subscribe(status=>{ COMMUNITY.live = (status === 'SUBSCRIBED'); });
   }catch(e){ COMMUNITY.live = false; }
 }

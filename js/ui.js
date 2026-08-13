@@ -50,6 +50,7 @@ const ICONS = {
   edit:      IC('<path d="M4 20h4L19 9a2.1 2.1 0 0 0-3-3L5 17z"/><path d="M14.5 6.5 17.5 9.5"/>'),
   trash:     IC('<path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13"/>'),
   heart:     IC('<path d="M12 20s-7-4.6-9.3-8.6A4.7 4.7 0 0 1 12 6a4.7 4.7 0 0 1 9.3 5.4C19 15.4 12 20 12 20Z"/>'),
+  smile:     IC('<circle cx="12" cy="12" r="8.4"/><path d="M8.5 14.2a4.3 4.3 0 0 0 7 0"/><path d="M9 9.5v.2M15 9.5v.2" stroke-width="2.2"/>'),
   check:     IC('<path d="m5 13 4.5 4.5L19 7"/>', 2.2),
   sun:       IC('<circle cx="12" cy="12" r="3.8"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5 5l1.4 1.4M17.6 17.6 19 19M19 5l-1.4 1.4M6.4 17.6 5 19"/>'),
   moon:      IC('<path d="M20 14.5A7.5 7.5 0 1 1 10.2 4.3 6 6 0 0 0 20 14.5Z"/>'),
@@ -804,6 +805,20 @@ function renderHome(){
 let commEditPost = null;      /* id of the post being edited inline    */
 let commEditComment = null;   /* id of the comment being edited inline */
 let commTagFilter = null;     /* active #hashtag filter (lowercased)   */
+let commReactFor = null;      /* id of the post whose reaction palette is open */
+
+/* The reaction palette. People tap any of these; each toggles their own, and a
+   person can hold several different ones on the same post. */
+const REACTIONS = ['👍','❤️','🔥','😮','😂','🎉'];
+
+/* Up to two initials from a display name, for the avatar chip. */
+function initials(name){
+  const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+  if(!parts.length) return '?';
+  const a = parts[0][0] || '';
+  const b = parts.length > 1 ? parts[parts.length - 1][0] : '';
+  return (a + b).toUpperCase();
+}
 
 /* Is `name` (a single @token) one of the known members? Matches a full name or
    its first word, case-insensitive — so @Vanilson lights up "Vanilson Muhongo". */
@@ -875,10 +890,36 @@ function goalSnapshot(){
   return { title: g.title || '', pct: goalPct(g), photo: g.photo ? goalPhoto(g.photo) : '' };
 }
 
+/* The reaction strip under a post: one chip per emoji people have used (count,
+   lit when it's mine), then an "add reaction" button that opens the palette. */
+function reactionRow(p){
+  const rmap = COMMUNITY.reactions[p.id] || {};
+  const present = [];
+  REACTIONS.forEach(e=>{ if(rmap[e] && rmap[e].count) present.push(e); });
+  Object.keys(rmap).forEach(e=>{ if(REACTIONS.indexOf(e) < 0 && rmap[e].count) present.push(e); });
+
+  const chips = present.map(e=>{
+    const cell = rmap[e];
+    return `<button class="creact ${cell.mine ? 'is-on' : ''}" data-act="creact"
+      data-a1="${esc(p.id)}" data-a2="${esc(e)}" aria-pressed="${cell.mine}">
+      <span class="creact__e">${e}</span><span class="creact__n">${cell.count}</span></button>`;
+  }).join('');
+
+  const open = commReactFor === p.id;
+  const addBtn = `<button class="creact creact--add ${open ? 'is-open' : ''}" data-act="creactopen"
+    data-a1="${esc(p.id)}" aria-label="${t('cm_react')}" aria-expanded="${open}">${ICONS.smile}</button>`;
+  const palette = open ? `<div class="cpalette">${REACTIONS.map(e=>{
+    const on = rmap[e] && rmap[e].mine;
+    return `<button class="cpalette__e ${on ? 'is-on' : ''}" data-act="creact"
+      data-a1="${esc(p.id)}" data-a2="${esc(e)}">${e}</button>`;
+  }).join('')}</div>` : '';
+
+  return `<div class="creacts">${chips}${addBtn}</div>${palette}`;
+}
+
 function communityPost(p){
   const mine = p.author === (USER && USER.id);
-  const likes = COMMUNITY.likeCount[p.id] || 0;
-  const liked = !!COMMUNITY.liked[p.id];
+  const name = communityName(p.author);
   const comments = COMMUNITY.comments[p.id] || [];
   const goal = (p.kind === 'goal' && p.goal) ? p.goal : null;
 
@@ -905,6 +946,7 @@ function communityPost(p){
 
   const thread = comments.map(c=>{
     const cmine = c.author === (USER && USER.id);
+    const cname = communityName(c.author);
     if(cmine && commEditComment === c.id){
       return `<div class="ccmt ccmt--edit">
         <input class="input" id="cedit_c_${esc(c.id)}" value="${esc(c.body || '')}" data-inp="cmention">
@@ -913,8 +955,11 @@ function communityPost(p){
       </div>`;
     }
     return `<div class="ccmt">
-      <span class="ccmt__n">${esc(communityName(c.author))}</span>
-      <span class="ccmt__b">${renderBody(c.body || '')}</span>
+      <span class="cavatar cavatar--sm">${esc(initials(cname))}</span>
+      <span class="ccmt__body">
+        <span class="ccmt__n">${esc(cname)}</span>
+        <span class="ccmt__b">${renderBody(c.body || '')}</span>
+      </span>
       ${cmine ? `<span class="ccmt__acts">
         <button class="ccmt__x" data-act="ccmtedit" data-a1="${esc(c.id)}" aria-label="${t('cm_edit')}">${ICONS.edit}</button>
         <button class="ccmt__x" data-act="cdelcomment" data-a1="${esc(c.id)}" aria-label="${t('cm_delete')}">${ICONS.close}</button>
@@ -924,8 +969,11 @@ function communityPost(p){
 
   return `<article class="cpost">
     <header class="cpost__h">
-      <span class="cpost__n">${esc(communityName(p.author))}</span>
-      <span class="cpost__d">${esc(fmtDate(p.created_at))}</span>
+      <span class="cavatar">${esc(initials(name))}</span>
+      <span class="cpost__id">
+        <span class="cpost__n">${esc(name)}</span>
+        <span class="cpost__d">${esc(fmtDate(p.created_at))}</span>
+      </span>
       ${mine ? `<span class="cpost__acts">
         <button class="cpost__x" data-act="cpeditpost" data-a1="${esc(p.id)}" aria-label="${t('cm_edit')}">${ICONS.edit}</button>
         <button class="cpost__x" data-act="cdelpost" data-a1="${esc(p.id)}" aria-label="${t('cm_delete')}">${ICONS.trash}</button>
@@ -934,8 +982,7 @@ function communityPost(p){
     ${bodyBlock}
     ${goalCard}
     <div class="cpost__f">
-      <button class="clike ${liked ? 'is-on' : ''}" data-act="clike" data-a1="${esc(p.id)}" aria-pressed="${liked}">
-        ${ICONS.heart}<span>${likes}</span></button>
+      ${reactionRow(p)}
     </div>
     <div class="cthread">
       ${thread}
@@ -2282,11 +2329,15 @@ const ACTIONS = {
     if(!res.ok){ toast(t('cm_err')); return; }
     toast(t('cm_posted')); if(view === 'home') rerender();
   },
-  clike: async (btn, id)=>{
+  /* open/close the emoji palette for a post (pure re-render, nothing typed to lose) */
+  creactopen: (btn, id)=>{ commReactFor = (commReactFor === id ? null : id); if(view === 'home') rerender(); },
+  /* toggle one emoji reaction on a post, then close the palette */
+  creact: async (btn, id, emoji)=>{
     btn.disabled = true;
-    const res = await toggleLike(id);
+    const res = await toggleReaction(id, emoji);
     btn.disabled = false;
     if(!res.ok){ toast(t('cm_err')); return; }
+    commReactFor = null;
     if(view === 'home') rerender();
   },
   caddcomment: async (btn, id)=>{
