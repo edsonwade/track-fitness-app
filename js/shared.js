@@ -37,7 +37,9 @@ const SHARED = {
   ex:     {},      /* ex_key -> linha de shared_exercises */
   days:   {},      /* day_no -> linha de shared_days */
   img:    {},      /* slug   -> linha de exercise_images */
-  ver:    {}       /* 'ex:legpress' | 'day:3' -> version lida */
+  ver:    {},      /* 'ex:legpress' | 'day:3' -> version lida */
+  changed:false,   /* o último pull trouxe algo diferente? (evita repaints no-op) */
+  _sig:   ''       /* assinatura do último catálogo aplicado */
 };
 
 let sharedChan = null, sharedTimer = null, resyncTimer = null, recoveryBound = false, heartbeat = null;
@@ -116,6 +118,14 @@ async function catalogPull(silent){
     SHARED.ex  = {};  (exs.data  || []).forEach(r=>{ SHARED.ex[r.ex_key] = r; SHARED.ver['ex:'+r.ex_key] = r.version; });
     SHARED.days= {};  (days.data || []).forEach(r=>{ SHARED.days[r.day_no] = r; SHARED.ver['day:'+r.day_no] = r.version; });
 
+    /* Assinatura do catálogo: versões dos exercícios/dias + as imagens revistas.
+       Se não mudou nada desde o último pull, os chamadores de fundo (heartbeat,
+       reconexão, o eco da própria escrita) não precisam de redesenhar o ecrã —
+       é o que tira o "fica sempre a piscar a atualizar". */
+    const sig = catalogSig();
+    SHARED.changed = (sig !== SHARED._sig);
+    SHARED._sig = sig;
+
     SHARED.ready = true;
     applyShared();
     return true;
@@ -124,6 +134,17 @@ async function catalogPull(silent){
     if(!silent && typeof toast === 'function') toast(t('sh_offline'));
     return false;
   }
+}
+
+/* Uma string estável que muda sempre que o catálogo muda: versão de cada
+   exercício e dia, mais o caminho/estado de cada imagem revista (uma foto nova
+   não bump uma `version` mas deve mesmo assim repintar). */
+function catalogSig(){
+  const v = Object.keys(SHARED.ver).sort().map(k=> k + '=' + SHARED.ver[k]).join('&');
+  const i = Object.keys(SHARED.img).sort()
+    .map(s=>{ const r = SHARED.img[s]; return s + ':' + (r.storage_path || '') + ':' + (r.reviewed ? 1 : 0); })
+    .join('&');
+  return v + '|' + i;
 }
 
 /* ---- merge para dentro dos objectos que o ui.js já lê ------------------- */
@@ -224,7 +245,8 @@ function resyncCatalog(){
   clearTimeout(resyncTimer);
   resyncTimer = setTimeout(async ()=>{
     const ok = await catalogPull(true);
-    if(ok && typeof rerender === 'function') rerender();
+    /* só repinta se algo mudou de facto, e nunca por cima de uma edição aberta */
+    if(ok && SHARED.changed && typeof catalogRepaint === 'function') catalogRepaint();
   }, 300);
 }
 
@@ -266,8 +288,12 @@ function onSharedChange(payload){
   clearTimeout(sharedTimer);
   sharedTimer = setTimeout(async ()=>{
     const ok = await catalogPull(true);
-    if(ok){
-      if(typeof rerender === 'function') rerender();
+    /* O eco da própria escrita volta por aqui com a MESMA assinatura -> nada
+       mudou -> não repinta nem avisa. Só uma alteração real (de outra pessoa,
+       ou uma que perdemos enquanto o socket esteve morto) repinta, e mesmo essa
+       nunca por cima de um sheet aberto. */
+    if(ok && SHARED.changed){
+      if(typeof catalogRepaint === 'function') catalogRepaint();
       if(!mine && typeof toast === 'function') toast(t('sh_remote'));
     }
   }, 400);
