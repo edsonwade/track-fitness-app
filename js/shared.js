@@ -40,7 +40,7 @@ const SHARED = {
   ver:    {}       /* 'ex:legpress' | 'day:3' -> version lida */
 };
 
-let sharedChan = null, sharedTimer = null;
+let sharedChan = null, sharedTimer = null, resyncTimer = null, recoveryBound = false, heartbeat = null;
 
 /* URL público de um ficheiro no bucket. O bucket é público, por isso é só
    concatenação — nada de assinar URLs, nada de pedido extra. */
@@ -203,8 +203,61 @@ function catalogSubscribe(){
       .on('postgres_changes', { event:'*', schema:'public', table:'shared_exercises' }, onSharedChange)
       .on('postgres_changes', { event:'*', schema:'public', table:'shared_days'      }, onSharedChange)
       .on('postgres_changes', { event:'*', schema:'public', table:'exercise_images'  }, onSharedChange)
-      .subscribe(status=>{ SHARED.live = (status === 'SUBSCRIBED'); });
+      .subscribe(status=>{
+        SHARED.live = (status === 'SUBSCRIBED');
+        /* Sempre que o canal (re)liga — arranque, e sobretudo a reconexão depois
+           de o telemóvel bloquear/voltar ao ecrã — reconcilia o catálogo inteiro.
+           É isto que apanha os eventos que se perderam enquanto o socket esteve
+           morto. Sem isto, um "para todos" feito por outra pessoa nunca chegava a
+           quem tinha a app em segundo plano, e a pessoa tinha de recarregar. */
+        if(status === 'SUBSCRIBED') resyncCatalog();
+      });
   }catch(e){ SHARED.live = false; }
+  bindCatalogRecovery();
+}
+
+/* Pull silencioso e agrupado, para reconciliar (reconexão, foco, voltar online).
+   Não é o caminho dos eventos: não mostra o toast "alguém editou", só põe a app
+   a par da base e redesenha. Timer próprio para não colidir com onSharedChange. */
+function resyncCatalog(){
+  if(!sb || !USER) return;
+  clearTimeout(resyncTimer);
+  resyncTimer = setTimeout(async ()=>{
+    const ok = await catalogPull(true);
+    if(ok && typeof rerender === 'function') rerender();
+  }, 300);
+}
+
+/* O realtime por si só não basta num telemóvel: ao bloquear o ecrã ou trocar de
+   app, o browser suspende o websocket e os eventos perdem-se. Reconciliar quando
+   a aba volta a ficar visível / ganha foco / a rede volta garante que uma acção
+   "para todos" aparece a toda a gente sem ninguém ter de parar e recarregar. */
+function bindCatalogRecovery(){
+  if(recoveryBound || typeof window === 'undefined') return;
+  recoveryBound = true;
+  const wake = ()=>{
+    if(typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+    resyncCatalog();
+  };
+  if(typeof document !== 'undefined') document.addEventListener('visibilitychange', wake);
+  window.addEventListener('focus', wake);
+  window.addEventListener('online', wake);
+  startCatalogHeartbeat();
+}
+
+/* Rede de segurança final: mesmo que o realtime, a reconexão e os eventos de
+   foco falhem todos, um pull periódico faz o catálogo convergir. Só corre com a
+   aba VISÍVEL e sessão activa — nada de bateria/pedidos com a app em segundo
+   plano — e passa pelo resyncCatalog agrupado, por isso não duplica um pull que
+   um evento acabou de disparar. Garante que um "para todos" chega a toda a gente
+   sem ninguém recarregar à mão. */
+function startCatalogHeartbeat(){
+  if(heartbeat || typeof window === 'undefined') return;
+  heartbeat = setInterval(()=>{
+    if(!sb || !USER) return;
+    if(typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+    resyncCatalog();
+  }, 45000);
 }
 function onSharedChange(payload){
   /* a própria escrita também volta pelo canal; não vale a pena avisar-me a
@@ -226,6 +279,7 @@ function catalogUnsubscribe(){
 
 /* Ponto de entrada único, chamado do store.js quando há sessão. */
 async function catalogSync(){
+  bindCatalogRecovery();            /* liga a recuperação mesmo se o 1º pull falhar (offline) */
   const ok = await catalogPull(true);
   if(ok) catalogSubscribe();
   return ok;
@@ -403,6 +457,17 @@ async function patchSharedItem(dayNo, exKey, block, patch){
   const it = items.find(x=> x.ex === exKey);
   if(!it) return { ok:false, reason:'error' };
   it[block] = { ...it[block], ...patch };
+  return saveSharedDay(dayNo, { items });
+}
+
+/* Remover um exercício do dia PARA TODOS: tira o item de shared_days.items e
+   grava. NÃO apaga a linha de shared_exercises — o catálogo não tem hard delete;
+   o exercício deixa apenas de estar prescrito neste dia e some do dia de toda a
+   gente pela mesma via (e realtime/recuperação) que qualquer edição do dia.
+   Reversível: volta-se a adicionar. */
+async function removeSharedItem(dayNo, exKey){
+  if(!sb || !USER || !SHARED.ready) return { ok:false, reason:'offline' };
+  const items = sharedItems(dayNo).filter(x=> x.ex !== exKey);
   return saveSharedDay(dayNo, { items });
 }
 
