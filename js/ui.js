@@ -1004,6 +1004,22 @@ function onCommunityRefreshed(){
   if(typeof rerender === 'function' && view === 'home') rerender();
 }
 
+/* A background catalogue refresh (realtime, reconnect, the 45s heartbeat) must
+   NOT repaint over an open sheet or a field being typed in — that is the
+   "fica sempre a piscar / às vezes sai de onde estás a alterar" report. Same
+   care onCommunityRefreshed takes for the wall. shared.js calls this instead of
+   rerender() directly, and only when the catalogue actually changed. */
+function catalogRepaint(){
+  const sheet = el('sheet');
+  if(sheet && sheet.classList.contains('is-open')) return;   /* a editar num sheet */
+  const a = document.activeElement;
+  if(a && a.closest && a.closest('#view')){
+    const tag = (a.tagName || '').toLowerCase();
+    if(tag === 'input' || tag === 'textarea' || a.isContentEditable) return;  /* a escrever */
+  }
+  if(typeof rerender === 'function') rerender();
+}
+
 /* ---- @mention autocomplete ---------------------------------------------
    One shared dropdown appended to <body>, positioned under the focused field.
    Driven by INPUTS.cmention on every community text field; picking inserts the
@@ -2208,6 +2224,19 @@ const ACTIONS = {
         res = await saveSharedExercise(id, patch);
         if(res.ok) res = await patchSharedItem(curDay, id, curBlock,
           { s:obj.s, r:obj.r, l:obj.l, rest:obj.rest });
+        if(res.ok){
+          /* O plano partilhado passa a ser a fonte de verdade deste exercício.
+             Um override privado (s/r/l/rest/name/eq) que tivesse ficado de uma
+             edição "só eu" anterior tapava esta alteração no exCard() e fazia a
+             edição parecer que "voltava ao início". Limpa-o — guarda só a foto,
+             que é sempre privada. Sem foto, remove o registo por inteiro. */
+          const okey = curDay + ':' + id, oprev = STATE.ovr[okey];
+          if(oprev){
+            if(oprev.photo) STATE.ovr[okey] = { photo: oprev.photo };
+            else delete STATE.ovr[okey];
+            saveState();
+          }
+        }
       } else {
         /* A foto do autor viaja com o exercício, mas SEMPRE em privado: fica no
            ovr do próprio, com a chave (slug) que publishExercise devolve. Sem
