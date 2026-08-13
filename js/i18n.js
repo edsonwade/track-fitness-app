@@ -41,6 +41,7 @@ en:{
   reset_sending:"Sending recovery link…",
   reset_sent:"We sent you a recovery link. Check your inbox.",
   signedout:"Signed out",
+  idle_logout:"Signed out for your security after a period of inactivity. Please sign in again.",
 
   /* ---------- chrome ---------- */
   app_name:"Vanilson",  nav_home:"Home",nav_train:"Train",nav_goals:"Goals",nav_profile:"Profile",
@@ -319,6 +320,7 @@ pt:{
   reset_sending:"A enviar link de recuperação…",
   reset_sent:"Enviámos-te um link de recuperação. Vê a tua caixa de correio.",
   signedout:"Sessão terminada",
+  idle_logout:"Sessão terminada por segurança após um período de inatividade. Inicia sessão novamente.",
 
   /* ---------- estrutura ---------- */
   app_name:"Vanilson",  nav_home:"Início",nav_train:"Treino",nav_goals:"Metas",nav_profile:"Perfil",
