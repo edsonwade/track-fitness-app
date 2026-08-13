@@ -76,6 +76,12 @@ function normState(){
      someone needs between sets is theirs to decide, not the app's. Absent key
      means "use the plan". Defaulted here so an older backup imports cleanly. */
   if(!STATE.restSec || typeof STATE.restSec !== 'object') STATE.restSec = {};
+  /* Ordem pessoal dos exercícios por dia: STATE.order['<day>'] = ['<key>', …],
+     onde key é o id do built-in (it.ex) ou 'c<id>' de um exercício próprio. É
+     privada (cada um escolhe a sua ordem) e uma chave em falta cai no fim, na
+     ordem natural — por isso um exercício novo aparece no fim, nunca desaparece.
+     Defaultada aqui para um backup antigo importar sem se perder. */
+  if(!STATE.order || typeof STATE.order !== 'object') STATE.order = {};
 
   STATE.trainers = STATE.trainers.map(normTrainer);
   STATE.goals = STATE.goals.map(normGoal);

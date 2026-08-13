@@ -486,6 +486,19 @@
 .excard__body{display:none;border-top:1px solid var(--line)}
 .excard.is-open .excard__body{display:block;animation:screen-in var(--d-mid) var(--e-out) both}
 
+/* reorder rail — always-visible ↑/↓ on the right edge of a collapsed card, so
+   the order can be changed without opening every card. Sibling of the header
+   button (never nested — two interactive controls on one row). */
+.excard__top{display:flex;align-items:stretch}
+.excard__top .excard__h{flex:1 1 auto;width:auto;min-width:0}
+.excard__move{display:flex;flex-direction:column;justify-content:center;gap:var(--s1);
+  flex:0 0 auto;padding:0 var(--s2);border-left:1px solid var(--line)}
+.movebtn{display:grid;place-items:center;width:2rem;height:1.6rem;border-radius:var(--r-sm);
+  color:var(--ink-3);background:transparent;transition:color var(--d-fast),background var(--d-fast)}
+.movebtn svg{width:1.15rem;height:1.15rem}
+.movebtn:not(:disabled):hover,.movebtn:not(:disabled):active{color:var(--acc);background:var(--surface-2)}
+.movebtn:disabled{opacity:.28;pointer-events:none}
+
 /* spec strip */
 /* Five columns is too tight on a 375px phone, so wrap to three there and go
    flat only when there is room. */
