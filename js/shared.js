@@ -389,7 +389,11 @@ async function publishExercise(obj, dayNo, block){
 
   const items = sharedItems(dayNo);
   items.push({ ex:key, ...blocks });
-  return saveSharedDay(dayNo, { items });
+  const res = await saveSharedDay(dayNo, { items });
+  /* devolve a chave (slug) criada para o autor poder guardar a SUA foto no ovr
+     privado — sem a chave, um exercício novo publicado ficava sem foto e caía
+     na imagem de padrão do sistema. */
+  return res.ok ? { ok:true, key } : res;
 }
 
 /* Editar a prescrição de um exercício já no plano: mexe só no bloco corrente,

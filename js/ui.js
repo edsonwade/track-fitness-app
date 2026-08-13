@@ -2111,10 +2111,24 @@ const ACTIONS = {
         if(res.ok) res = await patchSharedItem(curDay, id, curBlock,
           { s:obj.s, r:obj.r, l:obj.l, rest:obj.rest });
       } else {
+        /* A foto do autor viaja com o exercício, mas SEMPRE em privado: fica no
+           ovr do próprio, com a chave (slug) que publishExercise devolve. Sem
+           isto, um exercício novo publicado perdia a foto e o cartão caía na foto
+           de padrão do sistema — o "gerou uma foto que eu não escolhi". Um custom
+           promovido leva a foto que já tinha, se não a mudou agora. */
+        const cRec = mode === 'custom'
+          ? (STATE.custom[curDay] || []).find(x=> x.id === parseInt(id,10)) : null;
+        const carryPhoto = exPhotoReset ? '' : (exPhotoDraft || (cRec && cRec.photo) || '');
         res = await publishExercise(obj, curDay, curBlock);
-        /* promovido: a cópia privada sairia a dobrar na lista do dia */
-        if(res.ok && mode === 'custom'){
-          STATE.custom[curDay] = (STATE.custom[curDay] || []).filter(x=> x.id !== parseInt(id,10));
+        if(res.ok){
+          if(res.key && carryPhoto){
+            STATE.ovr[curDay + ':' + res.key] =
+              Object.assign({}, STATE.ovr[curDay + ':' + res.key], { photo: carryPhoto });
+          }
+          /* promovido: a cópia privada sairia a dobrar na lista do dia */
+          if(mode === 'custom'){
+            STATE.custom[curDay] = (STATE.custom[curDay] || []).filter(x=> x.id !== parseInt(id,10));
+          }
           saveState();
         }
       }

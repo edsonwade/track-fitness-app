@@ -144,7 +144,14 @@ const EX_IMG = {
 function exPhoto(exId){
   if(EX_PHOTO_URL[exId]) return EX_PHOTO_URL[exId];        /* reviewed, from the DB */
   if(EX_IMG[exId])       return IMG + EX_IMG[exId];        /* local, per exercise   */
-  return IMG + (PATTERN_IMG[EX_PATTERN[exId]] || PATTERN_IMG.squat);
+  const pat = EX_PATTERN[exId];
+  if(pat) return IMG + PATTERN_IMG[pat];                   /* shipped built-in       */
+  /* Unknown id = an exercise the USER created. EX_PATTERN is exhaustive for every
+     shipped exercise, so we only get here for a user's own slug. Never hand it a
+     system movement photo it did not choose — show the neutral placeholder, the
+     same contract as customPhoto(). This is the "app generated a photo I never
+     added" bug for exercises published to Everyone. */
+  return PLACEHOLDER_IMG;
 }
 
 /* Photo for a user-created exercise. Never empty (contract of exPhoto()), but
