@@ -1224,7 +1224,7 @@ function exCard(it, i){
         <div class="panel ${tab === 'prog' ? 'is-on' : ''}">${blockPanel(it)}</div>
         <div class="flexr flexr--wrap mt6">
           <button class="btn btn--ghost btn--sm" data-act="exeditbuilt" data-a1="${esc(it.ex)}">${ICONS.edit} ${t('b_edit')}</button>
-          <button class="btn btn--danger btn--sm" data-act="exhide" data-a1="${esc(it.ex)}">${ICONS.trash} ${t('b_rmday')}</button>
+          <button class="btn btn--danger btn--sm" data-act="exremove" data-a1="${esc(it.ex)}">${ICONS.trash} ${t('b_rmday')}</button>
         </div>
       </div>
     </div>
@@ -2158,9 +2158,32 @@ const ACTIONS = {
     STATE.custom[curDay] = (STATE.custom[curDay] || []).filter(x=> x.id !== parseInt(id,10));
     saveState(); renderTrain(); toast(t('ts_deleted'));
   },
-  exhide: (el2,exId)=>{
+  /* Remover: pessoal por defeito. Com o catálogo partilhado ligado, pergunta o
+     alcance — "Só eu" esconde no meu dia (STATE.hidden, privado); "Todos" tira o
+     exercício do dia partilhado para toda a gente (removeSharedItem). */
+  exremove: (el2,exId)=>{
+    if(!SHARED.ready){
+      STATE.hidden[curDay + ':' + exId] = true;
+      saveState(); renderTrain(); toast(t('ts_removed'));
+      return;
+    }
+    openSheet(t('b_rmday'), `
+      <p style="margin:0 0 var(--s3)">${t('rm_scope')}</p>
+      <p class="u-mut" style="margin:0;font-size:var(--t-sm)">${t('rm_scope_hint')}</p>`, `
+      <button class="btn btn--ghost" data-act="closesheet">${t('b_cancel')}</button>
+      <button class="btn btn--ghost" data-act="exremoveme" data-a1="${esc(exId)}">${t('sh_me')}</button>
+      <button class="btn btn--danger" data-act="exremoveall" data-a1="${esc(exId)}">${t('sh_all')}</button>`);
+  },
+  exremoveme: (el2,exId)=>{
     STATE.hidden[curDay + ':' + exId] = true;
-    saveState(); renderTrain(); toast(t('ts_removed'));
+    saveState(); closeSheet(); renderTrain(); toast(t('ts_removed'));
+  },
+  exremoveall: async (btn,exId)=>{
+    if(btn) btn.disabled = true;
+    const res = await removeSharedItem(curDay, exId);
+    if(btn) btn.disabled = false;
+    if(!reportShared(res)) return;
+    closeSheet(); renderTrain();
   },
   restorehidden: ()=>{
     DAYS.find(x=> x.id === curDay).items.forEach(it=>{ delete STATE.hidden[curDay + ':' + it.ex]; });
