@@ -311,16 +311,7 @@ const VIDEOS={
 
  /* Cardio — these had no video at all before. */
  treadmill:'raa5u4CF2Q4',      /* "Treino na Esteira: Dicas e Benefícios" — Smart Fit */
- bike:'qwTBKqiCGpM',           /* "Passo a passo para ajustar bike" — Personal ONFIT */
-
- /* No day lists these four, and they have no EX entry. They exist because
-    TEXT_EX in photos.js resolves a user-typed name to them, so a custom
-    exercise called "Cable Crossover" finds both a photo and a demo without
-    anyone having pasted a link. Nothing here may be left without a video. */
- crossover:'D9dh1jKBlXY',      /* HASfit — cable crossover, two arms          */
- chestpress:'n8TOta_pfr4',     /* LIVESTRONG — how to use a chest press machine */
- rowdb:'ufhQhwyrx-4',          /* BarBend — one-arm dumbbell row              */
- bbrow:'rqTOAM8WoeM'           /* Barbell bent-over row tutorial              */
+ bike:'qwTBKqiCGpM'            /* "Passo a passo para ajustar bike" — Personal ONFIT */
 };
 
 /* ---- cardio entries (own shape) ---- */

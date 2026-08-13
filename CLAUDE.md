@@ -5,8 +5,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 A hypertrophy training app ("Vanilson Workout") for a 6-day split, used on a phone at the
-gym. It tracks the plan, technique for every exercise, logged loads and reps, plus the
-user's own **goals** and **trainers**.
+gym. It tracks the plan, technique for every exercise, logged loads and reps, the user's
+own **goals** and **trainers**, and a cross-user **Community** wall.
 
 No build step, no package manager, no tests, no framework. Deployed as a static site on
 GitHub Pages (`origin` = `github.com/edsonwade/track-fitness-app`); deploy = commit to
@@ -25,7 +25,8 @@ no pt-PT-only region any more.
 
 ## Running it
 
-- `python -m http.server 8000`, then open `http://localhost:8000/`.
+- `python -m http.server 8000`, then open `http://localhost:8000/`. (`.claude/launch.json`
+  defines this as the `static` preview config.)
 - Opening `index.html` directly over `file://` also works — CSS, JS, fonts and images are
   all local and load fine. Only the two CDN scripts fail, which means the gate cannot
   authenticate, so the app stays behind the sign-in screen. That is expected, not a bug.
@@ -49,14 +50,15 @@ step, just ordered `<script>` tags.
 | `js/photos.js` | The only file that names image files |
 | `js/store.js` | `STATE`, `normState()`, IndexedDB, `saveState()`, Supabase, auth, CRUD |
 | `js/shared.js` | The shared catalogue: `SHARED`, `catalogSync()`, realtime, shared writes |
+| `js/community.js` | The Community wall: `COMMUNITY`, `communityPull()`, realtime, wall writes (state only, no rendering) |
 | `js/ui.js` | All rendering, the event layer, onboarding, chart, router |
 
 **Scripts must stay classic, not modules.** ES modules are fetched under CORS rules and
 are blocked on `file://`, which would break opening `index.html` directly. Load order is
-`data → i18n → photos → store → shared → ui`; `ui.js` kicks off `loadState()` at the
-bottom. `shared.js` must come after `store.js` — it reads `sb`, `USER` and `SUPA_URL`.
-Top-level `let`/`const` in classic scripts share one global lexical scope, so cross-file
-references work without exports.
+`data → i18n → photos → store → shared → community → ui`; `ui.js` kicks off `loadState()`
+at the bottom. `shared.js` and `community.js` must come after `store.js` — they read `sb`,
+`USER` and `SUPA_URL`/`t()`. Top-level `let`/`const` in classic scripts share one global
+lexical scope, so cross-file references work without exports.
 
 ## Event layer
 
@@ -189,6 +191,33 @@ exercise: the shared row is created and the private copy is deleted, or the day 
 it twice. `exhide` stays private on purpose — "remove from my day" is a personal act, and
 removing an exercise for everybody is a different, more dangerous one.
 
+## Community wall
+
+The Community feature (Phase 2) is the **inverse of `user_state`'s privacy model**: reads
+are *cross-user* — everyone sees everything — which is what makes it a wall. It therefore
+lives in its own tables (`supabase/002_community.sql`, run by hand, idempotent, depends on
+`001`'s `profiles` for author names), never in `user_state`. Writes and deletes stay owner-
+locked by RLS (`author = auth.uid()`), and as with the catalogue there is **no `DELETE`
+policy** — removal is `deleted = true`.
+
+| Table | Holds |
+|:---|:---|
+| `community_posts` | posts: `kind='note'` (free text) or `kind='goal'` (a `goal` jsonb *snapshot* `{title, pct, photo}`) |
+| `post_comments` | comments on a post |
+| `post_likes` | one like per person per post |
+
+- `js/community.js` mirrors `shared.js`'s division of labour: **state, reads, realtime and
+  writes only — it renders nothing.** All Community rendering lives in `ui.js`, like the
+  rest of the app. It populates the `COMMUNITY` object (`posts`, `comments`, `likeCount`,
+  `liked`, `names`, `members`) and nothing else.
+- A `kind='goal'` post stores a **snapshot**, not a live reference, so sharing a goal never
+  exposes the rest of the sharer's private state.
+- `communityPull()` runs four selects in parallel. A failure on posts/comments/likes
+  disables the wall (falls back to the static panel); a failure on `profiles` alone does
+  not — names are cosmetic, so the wall stays up with a generic label.
+- Same degradation contract as the catalogue: no tables / no network → `COMMUNITY.ready`
+  stays false, and `file://` keeps working.
+
 ## Theming
 
 Only CSS variables. `applyTheme()` sets `data-theme` on `<html>` (not `<body>`).
@@ -197,78 +226,3 @@ The accent is **two tokens and this matters**: `--acc-fill` is the bright lime u
 *background* (always with `--acc-on-fill` text on it), and `--acc` is lime used for *text,
 icons and borders* — and `--acc` is **darkened to `#4a6b00` in the light theme** because
 bright lime on white is unreadable. Using `--acc-fill` as a text colour is a bug.
-
-Photography is treated differently per theme, not just recoloured: in dark mode text sits
-on the image over a strong scrim; in light mode `.pcard__body` becomes `position:static`
-so the text lifts off the photo into a solid panel beneath it. Same markup, two
-treatments.
-
-Chart.js cannot read CSS custom properties, so `initProgChart()` pulls computed values off
-`document.documentElement` and the chart is rebuilt after a theme toggle.
-
-One layout gotcha worth knowing, because it bit this codebase already: a `<span>` used as
-its own line needs `display:block`. Several label/value pairs (`.spec__l`/`.spec__v`,
-`.excard__n`/`.excard__sub`, `.wday__d`/`.wday__n`) are spans, and without it they share a
-line and only *look* stacked when the text happens to be long enough to wrap.
-
-## Photography
-
-All images are local in `img/` (see `img/attribution.md`), sourced from Pexels. Nothing is
-hotlinked. `js/photos.js` is the only file that names a file: it maps every `EX` id to a
-**movement pattern** photo (`squat`, `hinge`, `pressFlat`, …) rather than one photo per
-exercise, because good stock photos of e.g. a seated calf raise do not exist and a set of
-weak literal matches looks cheaper than a set of strong pattern matches. Resolvers can
-never return empty, so no card can render a broken image.
-
-Coach avatars and goal covers are **picked from presets**, not uploaded — the app handles
-no file uploads and stores no user-generated images. A record stores the bare filename.
-
-Exercise-specific photography comes from the database, not from the pattern map:
-`shared.js` fills `EX_PHOTO_URL[exId]` from a **reviewed** `exercise_images` row plus the
-public `exercise-media` bucket, and `exPhoto()` checks it before falling back to the local
-pattern. **Pexels and Wikimedia Commons are acquisition tools for content creation only —
-the app never calls an external image service at runtime**, and an exercise with no
-reviewed image renders its pattern photo rather than nothing.
-
-## Video
-
-**Video plays inline and never opens a tab.** There are no `target="_blank"` links and no
-YouTube search fallback anywhere — `grep` for either should return nothing.
-
-`videoBlock()` renders a facade: the local pattern photo as poster plus a play control.
-Only on tap does `ACTIONS.playvid` replace it with a
-`youtube-nocookie.com/embed/...?autoplay=1&rel=0&modestbranding=1&playsinline=1` iframe.
-`playsinline=1` is load-bearing — without it iOS hijacks the whole screen into the native
-player. Opening a day therefore creates zero iframes.
-
-All 38 exercises have a `YT` id. The two `CARDIO` entries do not, and `videoBlock()` shows
-a short "no demo yet" note for them rather than degrading to a link.
-
-## Onboarding
-
-`needsOnboarding()` is true until `profile.onboardedAt` is set. Five steps (name/photo →
-body stats → training days → first goal → first trainer), skippable at any point via
-`obskip`, which still commits whatever was filled in. This is what replaces the old
-hardcoded dashboard placeholders with the user's real numbers. An existing user with cloud
-data but no `onboardedAt` will see it once — that is intended.
-
-## Auth gate
-
-`#gate` is an overlay shown whenever `USER` is null, so the app needs a Supabase session
-even though local storage would work standalone. Copy, field ids (`fLE`, `fLP`, `fRN`,
-`fRE`, `fRP`, `fRP2`) and validation behaviour are unchanged from before the redesign;
-only the accent and background differ. Validation runs *before* the `sb` connectivity
-check so users get feedback offline. `validEmail()` gates registration against `EMAIL_OK`;
-`authErr()` maps Supabase error strings to `t()` keys.
-
-Gate styles live in `css/gate.css`, scoped under `#gate` or gate-only classes (`.gmark`,
-`.glang`, `.atg`, `.acta`, `.ghelp`, `.pwstr`, `.gfig`) so they cannot leak. `.gate-btn`
-used to be shared with the exercise modal's Save button; the rebuilt modal uses
-`.btn--acc`, so that coupling is gone and `.gate-btn` is now gate-only.
-
-## Not built yet (Phase 2)
-
-Sharing goals publicly, with comments and likes from other users. This needs new Supabase
-tables (`profiles`, `shared_goals`, `goal_comments`, `goal_likes`) whose RLS permits
-cross-user reads — impossible in `user_state`, where RLS is `auth.uid() = user_id` — plus
-SQL run by hand in the Supabase project. Home already has the reserved slot (`.soon`).
