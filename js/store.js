@@ -396,12 +396,69 @@ function applyGate(){
   }else{
     bootedFor = null;
   }
+  /* arm the idle timer while signed in, clear it once signed out */
+  if(typeof resetIdleTimer === 'function') resetIdleTimer();
   if(typeof syncScrollLock === 'function') syncScrollLock();
 }
+/* ---------- session lifetime (security) ----------
+   The auth token lives in sessionStorage, NOT localStorage: sessionStorage is
+   wiped when the browser (or the tab) is closed, so a closed browser means a
+   closed session — reopening lands back on the sign-in screen. A plain reload
+   in the same tab keeps you in, which is what you want.
+   On top of that an idle timer signs the user out after INACTIVE_MS of no
+   interaction, so a phone left unlocked on a bench at the gym does not stay
+   logged in forever. */
+const INACTIVE_MS = 30 * 60 * 1000;   /* 30 minutes */
+let idleTimer = null;
+
+/* Older builds stored the token in localStorage. Once we move to sessionStorage
+   that copy is never read again but would sit there as a stale credential, so
+   remove any `sb-<ref>-auth-token` left behind. */
+function purgeLegacyAuth(){
+  try{
+    for(let i = localStorage.length - 1; i >= 0; i--){
+      const k = localStorage.key(i);
+      if(k && /^sb-.*-auth-token$/.test(k)) localStorage.removeItem(k);
+    }
+  }catch(e){}
+}
+
+async function idleLogout(){
+  if(!USER) return;
+  try{ await sb.auth.signOut(); }catch(e){}
+  USER = null;
+  applyGate();
+  gateMsg(t('idle_logout'));
+}
+function resetIdleTimer(){
+  if(idleTimer) clearTimeout(idleTimer);
+  if(!USER) return;                 /* no timer while signed out */
+  idleTimer = setTimeout(idleLogout, INACTIVE_MS);
+}
+function startIdleWatch(){
+  if(startIdleWatch.on) return;     /* attach the listeners exactly once */
+  startIdleWatch.on = true;
+  ['pointerdown','keydown','touchstart','visibilitychange'].forEach(ev=>{
+    document.addEventListener(ev, ()=>{
+      if(ev === 'visibilitychange' && document.hidden) return;
+      resetIdleTimer();
+    }, { passive:true });
+  });
+}
+
 function initCloud(){
   if(!cloudConfigured() || !window.supabase){ gateMsg(t('g_noserver')); return; }
+  purgeLegacyAuth();
+  startIdleWatch();
   try{
-    sb = window.supabase.createClient(SUPA_URL, SUPA_ANON);
+    sb = window.supabase.createClient(SUPA_URL, SUPA_ANON, {
+      auth:{
+        storage: window.sessionStorage,   /* dies when the browser closes */
+        persistSession: true,             /* but survives a same-tab reload */
+        autoRefreshToken: true,
+        detectSessionInUrl: true
+      }
+    });
     sb.auth.getSession().then(({data})=>{
       USER = data && data.session ? data.session.user : null;
       applyGate();
