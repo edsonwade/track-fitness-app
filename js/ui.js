@@ -2225,16 +2225,29 @@ const ACTIONS = {
         if(res.ok) res = await patchSharedItem(curDay, id, curBlock,
           { s:obj.s, r:obj.r, l:obj.l, rest:obj.rest });
         if(res.ok){
+          /* A foto que vai para o catálogo partilhado: a acabada de enviar
+             (exPhotoDraft) ou, se não mexeu na foto agora, a que já estava no
+             ovr privado. Reset explícito não publica nada. */
+          const photoUrl = exPhotoReset ? ''
+            : (exPhotoDraft || (STATE.ovr[curDay + ':' + id] && STATE.ovr[curDay + ':' + id].photo) || '');
           /* O plano partilhado passa a ser a fonte de verdade deste exercício.
              Um override privado (s/r/l/rest/name/eq) que tivesse ficado de uma
              edição "só eu" anterior tapava esta alteração no exCard() e fazia a
              edição parecer que "voltava ao início". Limpa-o — guarda só a foto,
-             que é sempre privada. Sem foto, remove o registo por inteiro. */
+             que continua privada como feedback imediato. Sem foto, remove o
+             registo por inteiro. */
           const okey = curDay + ':' + id, oprev = STATE.ovr[okey];
           if(oprev){
             if(oprev.photo) STATE.ovr[okey] = { photo: oprev.photo };
             else delete STATE.ovr[okey];
             saveState();
+          }
+          /* ...e publica a foto PARA TODA A GENTE (regista em exercise_images +
+             liga image_slug). Não é fatal: o texto/vídeo já foram; se falhar,
+             avisa mas deixa o save fechar na mesma. */
+          if(photoUrl){
+            const pr = await linkSharedPhoto(id, photoUrl);
+            if(!pr.ok && !pr.skipped) toast(pr.msg ? ('⚠ ' + pr.msg) : t('sh_offline'));
           }
         }
       } else {
@@ -2251,6 +2264,10 @@ const ACTIONS = {
           if(res.key && carryPhoto){
             STATE.ovr[curDay + ':' + res.key] =
               Object.assign({}, STATE.ovr[curDay + ':' + res.key], { photo: carryPhoto });
+            /* publica a foto PARA TODA A GENTE — sem isto o exercício novo
+               aparecia sem imagem a toda a gente menos ao autor. Não fatal. */
+            const pr = await linkSharedPhoto(res.key, carryPhoto);
+            if(!pr.ok && !pr.skipped) toast(pr.msg ? ('⚠ ' + pr.msg) : t('sh_offline'));
           }
           /* promovido: a cópia privada sairia a dobrar na lista do dia */
           if(mode === 'custom'){
