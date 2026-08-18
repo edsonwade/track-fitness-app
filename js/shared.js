@@ -139,6 +139,10 @@ async function catalogPull(silent){
 
     SHARED.ready = true;
     applyShared();
+    /* tenta o backfill assim que o catálogo está pronto; corre em diferido para
+       não aninhar dentro deste pull, e é no-op depois da primeira vez. Cobre a
+       corrida com o cloudPull() — quem ficar pronto por último é que o faz. */
+    setTimeout(backfillMyImages, 0);
     return true;
   }catch(e){
     SHARED.ready = false;
@@ -199,7 +203,16 @@ function applyShared(){
     if(r.theme) d.theme = r.theme;
     if(r.type)  d.type  = r.type;
     const items = fullJson(r.items);
-    if(Array.isArray(items) && items.length) d.items = items;
+    if(Array.isArray(items) && items.length){
+      d.items = items;
+      /* A FOTO VIAJA COM O ITEM. É este o canal fiável: a outra conta já recebe
+         os itens do dia (é assim que vê os exercícios), por isso recebe a foto
+         pela mesma via — sem depender da tabela exercise_images à parte. Um item
+         com `photo` (URL do bucket público) manda em EX_PHOTO_URL. */
+      items.forEach(it=>{
+        if(it && it.photo && mediaPathFromUrl(it.photo)) EX_PHOTO_URL[it.ex] = it.photo;
+      });
+    }
   });
 }
 
@@ -318,7 +331,7 @@ function catalogUnsubscribe(){
 async function catalogSync(){
   bindCatalogRecovery();            /* liga a recuperação mesmo se o 1º pull falhar (offline) */
   const ok = await catalogPull(true);
-  if(ok) catalogSubscribe();
+  if(ok) catalogSubscribe();   /* o backfill das imagens é disparado pelo catalogPull */
   return ok;
 }
 
@@ -462,7 +475,7 @@ function sharedItems(dayNo){
    Os quatro blocos saem sempre de prog() — escrevê-los à mão é o que faz a
    periodização divergir entre exercícios. O que a pessoa escreveu entra por
    cima, mas só no bloco em que está. */
-async function publishExercise(obj, dayNo, block){
+async function publishExercise(obj, dayNo, block, photoUrl){
   if(!sb || !USER || !SHARED.ready) return { ok:false, reason:'offline' };
   const key = exSlug(obj.name);
   const first = await saveSharedExercise(key, {
@@ -479,7 +492,10 @@ async function publishExercise(obj, dayNo, block){
   if(obj.l) blocks[block || 'b1'].l = obj.l;
 
   const items = sharedItems(dayNo);
-  items.push({ ex:key, ...blocks });
+  /* a foto entra no próprio item — mesmo canal fiável que leva o exercício a
+     toda a gente. Só um URL do bucket público; um data:/externo é ignorado. */
+  const photo = (photoUrl && mediaPathFromUrl(photoUrl)) ? { photo: photoUrl } : {};
+  items.push({ ex:key, ...photo, ...blocks });
   const res = await saveSharedDay(dayNo, { items });
   /* devolve a chave (slug) criada para o autor poder guardar a SUA foto no ovr
      privado — sem a chave, um exercício novo publicado ficava sem foto e caía
@@ -501,9 +517,12 @@ async function publishExercise(obj, dayNo, block){
    Só se aceita um URL que seja mesmo do bucket; um data: URL ou externo é
    ignorado em silêncio (skipped) em vez de rebentar. Não é fatal ao guardar:
    o texto/vídeo do exercício já foram publicados; se isto falhar, avisa-se. */
-async function linkSharedPhoto(exKey, photoUrl){
+async function linkSharedPhoto(exKey, photoUrl, storagePath){
   if(!sb || !USER || !SHARED.ready) return { ok:false, reason:'offline' };
-  const path = mediaPathFromUrl(photoUrl);
+  /* Prefere o caminho REAL devolvido pelo upload; só cai no parse do URL para os
+     casos de reaproveitamento (backfill, custom promovido). Assim uma foto
+     acabada de enviar nunca é "saltada" só porque o URL não bate certo. */
+  const path = storagePath || mediaPathFromUrl(photoUrl);
   if(!path) return { ok:true, skipped:true };
   try{
     const { error } = await sb.from('exercise_images')
@@ -511,16 +530,80 @@ async function linkSharedPhoto(exKey, photoUrl){
     if(error) throw error;
   }catch(e){ return { ok:false, reason:'error', msg: errText(e) }; }
   /* liga a imagem ao exercício; reusa a escrita com versão optimista */
-  return saveSharedExercise(exKey, { image_slug: exKey });
+  const res = await saveSharedExercise(exKey, { image_slug: exKey });
+  if(!res.ok) return res;
+  /* Confirma que ficou MESMO ligado. Uma escrita recusada em silêncio (RLS,
+     conflito de versão) deixava o autor convencido de que partilhou quando na
+     verdade a linha continuava sem image_slug — que é exactamente o bug de "para
+     todos não aparece a imagem". Relê e verifica. */
+  try{
+    const { data } = await sb.from('shared_exercises')
+      .select('image_slug').eq('ex_key', exKey).maybeSingle();
+    if(!data || data.image_slug !== exKey){
+      return { ok:false, reason:'unverified',
+        msg:'a imagem não ficou ligada ao exercício (' + exKey + ') — recarrega e tenta outra vez' };
+    }
+  }catch(e){}
+  return { ok:true };
+}
+
+/* ---- backfill: publica as imagens que ficaram só no privado -----------------
+   O bug real: exercícios criados ANTES desta correção (ou cuja publicação da
+   imagem falhou) têm a foto só no ovr privado do autor — o autor vê-a, mais
+   ninguém. Isto corre uma vez por sessão, no arranque, e para CADA exercício
+   PRÓPRIO do autor (created_by === eu) que esteja publicado mas cujo item do dia
+   ainda não tem foto, escreve a foto NO ITEM do dia — o canal fiável que já
+   chega a toda a gente. Também regista em exercise_images como bónus. Só toca
+   nos exercícios do próprio; nunca empurra a minha foto para o de outra pessoa.
+   Aditivo, best-effort; cada chave é tentada no máximo uma vez. */
+let _backfillDone = false;
+const _backfillTried = new Set();
+async function backfillMyImages(){
+  if(_backfillDone) return;
+  if(!sb || !USER || !SHARED.ready) return;
+  if(typeof STATE === 'undefined' || !STATE || !STATE.ovr) return;
+  _backfillDone = true;
+  let published = 0;
+  for(const k of Object.keys(STATE.ovr)){
+    const o = STATE.ovr[k];
+    if(!o || !o.photo) continue;
+    const path = mediaPathFromUrl(o.photo);
+    if(!path) continue;                                   /* URL não partilhável */
+    const ci = k.indexOf(':');
+    const dayNo = k.slice(0, ci);
+    const exKey = k.slice(ci + 1);
+    const row = SHARED.ex[exKey];
+    if(!row || row.status !== 'published') continue;
+    if(row.created_by !== USER.id) continue;              /* só os MEUS exercícios */
+    if(_backfillTried.has(k)) continue;
+    _backfillTried.add(k);
+    /* está neste dia partilhado e ainda sem foto? */
+    const items = sharedItems(dayNo);
+    const it = items.find(x=> x.ex === exKey);
+    if(!it || it.photo) continue;                         /* não é deste dia, ou já tem */
+    it.photo = o.photo;
+    try{
+      const r = await saveSharedDay(dayNo, { items });
+      if(r && r.ok){
+        published++;
+        try{ await linkSharedPhoto(exKey, o.photo, path); }catch(e){}  /* bónus */
+      }
+    }catch(e){}
+  }
+  if(published && typeof toast === 'function' && typeof t === 'function'){
+    toast(t('sh_backfilled').replace('{n}', published));
+  }
 }
 
 /* Editar a prescrição de um exercício já no plano: mexe só no bloco corrente,
    porque é esse o que a pessoa tem à frente. */
-async function patchSharedItem(dayNo, exKey, block, patch){
+async function patchSharedItem(dayNo, exKey, block, patch, itemPatch){
   const items = sharedItems(dayNo);
   const it = items.find(x=> x.ex === exKey);
   if(!it) return { ok:false, reason:'error' };
   it[block] = { ...it[block], ...patch };
+  /* patch ao nível do ITEM (ex.: a foto) — viaja para toda a gente com o dia */
+  if(itemPatch) Object.assign(it, itemPatch);
   return saveSharedDay(dayNo, { items });
 }
 
@@ -533,6 +616,62 @@ async function removeSharedItem(dayNo, exKey){
   if(!sb || !USER || !SHARED.ready) return { ok:false, reason:'offline' };
   const items = sharedItems(dayNo).filter(x=> x.ex !== exKey);
   return saveSharedDay(dayNo, { items });
+}
+
+/* ---- diagnóstico: prova real de que "para todos" partilha a imagem --------
+   Corre no dispositivo do autor, contra a base REAL, o caminho todo: envia uma
+   foto, lê-a como público (o que outra conta faria), cria um exercício de teste
+   publicado, liga-lhe a imagem, e RE-PUXA o catálogo para ver se EX_PHOTO_URL
+   fica preenchido — que é EXACTAMENTE o que o cliente de outra pessoa calcula.
+   Se algum passo falhar, diz porquê (RLS, permissão, coluna). No fim apaga
+   (soft-delete) o exercício de teste, por isso não aparece no plano de ninguém.
+   Chave única por execução para nunca colidir com um teste anterior. */
+async function runImageDiagnostic(){
+  const steps = [];
+  const add = (step, ok, detail)=> steps.push({ step, ok:!!ok, detail: detail || '' });
+  if(!sb || !USER){ add('sessão iniciada', false, 'não há sessão'); return steps; }
+  if(!SHARED.ready){ add('catálogo ligado', false, 'o catálogo partilhado não está ligado'); return steps; }
+  const KEY = '__diag_' + Date.now().toString(36);
+  let url, path;
+  /* 1. enviar a foto para o bucket */
+  try{
+    const cv = document.createElement('canvas'); cv.width = 8; cv.height = 8;
+    const ctx = cv.getContext('2d'); ctx.fillStyle = '#c8ff00'; ctx.fillRect(0, 0, 8, 8);
+    const blob = await new Promise(r=> cv.toBlob(r, 'image/jpeg', 0.8));
+    const up = await uploadExercisePhoto(blob, KEY);
+    if(!up.ok) throw new Error(up.reason || 'upload falhou');
+    url = up.url; path = up.path;
+    add('1. enviar foto para o bucket', true, path);
+  }catch(e){ add('1. enviar foto para o bucket', false, errText(e)); return steps; }
+  /* 2. ler o URL público SEM sessão — é o que outra conta faz */
+  try{
+    const r = await fetch(url, { cache:'no-store' });
+    add('2. ler a foto como outra conta', r.ok, 'HTTP ' + r.status + (r.ok ? '' : ' — o bucket não está público'));
+  }catch(e){ add('2. ler a foto como outra conta', false, String(e)); }
+  /* 3. criar o exercício partilhado de teste */
+  try{
+    const r = await saveSharedExercise(KEY, { name_pt:'Diagnóstico', name_en:'Diagnostic', status:'published', kind:'acc', deleted:false });
+    add('3. criar exercício partilhado', r.ok, r.ok ? '' : (r.msg || r.reason || 'recusado'));
+    if(!r.ok){ await _diagCleanup(KEY); return steps; }
+  }catch(e){ add('3. criar exercício partilhado', false, errText(e)); await _diagCleanup(KEY); return steps; }
+  /* 4. ligar a imagem (exercise_images + image_slug) */
+  try{
+    const r = await linkSharedPhoto(KEY, url, path);
+    add('4. ligar a imagem ao exercício', r.ok && !r.skipped, r.ok ? (r.skipped ? 'saltou (URL não é do bucket)' : '') : (r.msg || r.reason || 'recusado'));
+  }catch(e){ add('4. ligar a imagem ao exercício', false, errText(e)); }
+  /* 5. re-puxar o catálogo e ver o que OUTRA conta veria */
+  try{
+    await catalogPull(true);
+    const got = EX_PHOTO_URL[KEY];
+    add('5. outra conta vê a imagem?', !!got && got === url, got ? got : 'SEM imagem — cairia no placeholder');
+  }catch(e){ add('5. outra conta vê a imagem?', false, errText(e)); }
+  await _diagCleanup(KEY);
+  return steps;
+}
+async function _diagCleanup(KEY){
+  try{ await saveSharedExercise(KEY, { deleted:true, status:'draft' }); }catch(e){}
+  try{ await catalogPull(true); }catch(e){}
+  try{ delete EX_PHOTO_URL[KEY]; if(typeof EX !== 'undefined') delete EX[KEY]; }catch(e){}
 }
 
 /* ---- semear -------------------------------------------------------------
