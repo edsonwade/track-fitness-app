@@ -2177,7 +2177,7 @@ const ACTIONS = {
   },
 
   exadd: ()=>{
-    exScope = 'me'; exPhotoDraft = null; exPhotoDraftPath = null; exPhotoReset = false;
+    exScope = SHARED.ready ? 'all' : 'me'; exPhotoDraft = null; exPhotoDraftPath = null; exPhotoReset = false;
     openSheet(t('m_add'), exFormHTML({}, { photoKey:'new', photo:customPhoto({}) }), `
       <button class="btn btn--ghost" data-act="closesheet">${t('b_cancel')}</button>
       <button class="btn btn--acc" data-act="exsave" data-a1="add">${t('b_save')}</button>`);
@@ -2185,7 +2185,7 @@ const ACTIONS = {
   exeditcustom: (el2,id)=>{
     const c = (STATE.custom[curDay] || []).find(x=> x.id === parseInt(id,10));
     if(!c) return;
-    exScope = 'me'; exPhotoDraft = null; exPhotoDraftPath = null; exPhotoReset = false;
+    exScope = SHARED.ready ? 'all' : 'me'; exPhotoDraft = null; exPhotoDraftPath = null; exPhotoReset = false;
     openSheet(t('m_edit'), exFormHTML(c, { isEdit:true, photoKey:'c'+c.id, photo:customPhoto(c) }), `
       <button class="btn btn--ghost" data-act="closesheet">${t('b_cancel')}</button>
       <button class="btn btn--acc" data-act="exsave" data-a1="custom" data-a2="${c.id}">${t('b_save')}</button>`);
@@ -2195,7 +2195,7 @@ const ACTIONS = {
     const it = DAYS.find(d=> d.id === curDay).items.find(x=> x.ex === exId);
     const b = it[curBlock];
     const o = STATE.ovr[curDay + ':' + exId] || {};
-    exScope = 'me'; exPhotoDraft = null; exPhotoDraftPath = null; exPhotoReset = false;
+    exScope = SHARED.ready ? 'all' : 'me'; exPhotoDraft = null; exPhotoDraftPath = null; exPhotoReset = false;
     openSheet(t('m_edit'), exFormHTML({
       name:o.name || exName(e), eq:o.eq || L(e.eq), s:o.s || b.s,
       r:o.r || dtxt(b.r), l:o.l || dtxt(b.l), rest:o.rest || b.rest,
@@ -2331,21 +2331,17 @@ const ACTIONS = {
     STATE.custom[curDay] = (STATE.custom[curDay] || []).filter(x=> x.id !== parseInt(id,10));
     saveState(); renderTrain(); toast(t('ts_deleted'));
   },
-  /* Remover: pessoal por defeito. Com o catálogo partilhado ligado, pergunta o
-     alcance — "Só eu" esconde no meu dia (STATE.hidden, privado); "Todos" tira o
-     exercício do dia partilhado para toda a gente (removeSharedItem). */
+  /* Remover: agora TUDO é público. Com o catálogo ligado, remover tira o
+     exercício do dia partilhado para toda a gente (removeSharedItem), com uma
+     confirmação porque afeta todos. Sem catálogo, esconde só localmente. */
   exremove: (el2,exId)=>{
     if(!SHARED.ready){
       STATE.hidden[curDay + ':' + exId] = true;
       saveState(); renderTrain(); toast(t('ts_removed'));
       return;
     }
-    openSheet(t('b_rmday'), `
-      <p style="margin:0 0 var(--s3)">${t('rm_scope')}</p>
-      <p class="u-mut" style="margin:0;font-size:var(--t-sm)">${t('rm_scope_hint')}</p>`, `
-      <button class="btn btn--ghost" data-act="closesheet">${t('b_cancel')}</button>
-      <button class="btn btn--ghost" data-act="exremoveme" data-a1="${esc(exId)}">${t('sh_me')}</button>
-      <button class="btn btn--danger" data-act="exremoveall" data-a1="${esc(exId)}">${t('sh_all')}</button>`);
+    if(!confirm(t('rm_scope_hint'))) return;
+    ACTIONS.exremoveall(el2, exId);
   },
   exremoveme: (el2,exId)=>{
     STATE.hidden[curDay + ':' + exId] = true;
@@ -2751,20 +2747,15 @@ function catalogRowHTML(){
     ${diag}`;
 }
 
-/* O âmbito só aparece quando há catálogo partilhado. Sem ligação não há
-   escolha nenhuma a fazer — tudo é local — e mostrar um toggle morto era
-   prometer uma coisa que a app não podia cumprir. */
+/* Já não há escolha privado/público: com o catálogo ligado, TUDO o que se cria
+   ou edita é para toda a gente. Em vez do toggle (que criava os "dois sistemas"
+   e a confusão de coisas que só o autor via), mostra-se uma nota fixa a deixar
+   claro que a alteração é partilhada. Sem catálogo ligado, fica local e não há
+   nada a dizer. */
 function scopeFieldHTML(){
   if(!SHARED.ready) return '';
   return `<div class="field">
-      <span class="field__l">${t('sh_scope')}</span>
-      <div class="seg">
-        <button type="button" class="seg__b ${exScope === 'me' ? 'is-on' : ''}"
-          data-act="exscope" data-a1="me">${t('sh_me')}</button>
-        <button type="button" class="seg__b ${exScope === 'all' ? 'is-on' : ''}"
-          data-act="exscope" data-a1="all">${t('sh_all')}</button>
-      </div>
-      <span class="field__hint" id="exScopeHint">${t(exScope === 'all' ? 'sh_scope_all' : 'sh_scope_me')}</span>
+      <span class="field__hint">${ICONS.info} ${t('sh_scope_all')}</span>
     </div>`;
 }
 
