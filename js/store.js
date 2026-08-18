@@ -485,17 +485,19 @@ async function cloudPull(){
   if(!sb || !USER) return;
   try{
     const { data } = await sb.from('user_state').select('data').eq('user_id', USER.id).maybeSingle();
-    if(data && data.data){
-      /* Last-write-wins is unchanged: the cloud row still replaces STATE. What
-         changed is that an identical row no longer repaints the screen — the
-         pull that follows every sign-in event used to rebuild #view even when
-         it brought back exactly what was already there. */
-      const before = JSON.stringify(STATE);
-      STATE = data.data; normState(); saveLocal();
-      LANG = (STATE.lang === 'pt') ? 'pt' : 'en';
-      applyTheme();
-      if(JSON.stringify(STATE) !== before && typeof boot === 'function') boot();
-    }
+    /* Sign-in SUBSTITUI SEMPRE o estado local: com a linha da nuvem se existir,
+       ou por um estado LIMPO se este utilizador ainda não tem nenhuma. Sem o
+       ramo limpo, um utilizador NOVO herdava o que o anterior deixou em cache
+       local — o bug "entrei noutra conta e apareceram os dados da outra" (e,
+       pior, o saveState a seguir empurrava os dados da conta A para a conta B).
+       Só corre com resposta REAL do servidor: um erro/offline lança e cai no
+       catch, deixando o estado local como está — o modo offline continua igual. */
+    const before = JSON.stringify(STATE);
+    STATE = (data && data.data) ? data.data : {};
+    normState(); saveLocal();
+    LANG = (STATE.lang === 'pt') ? 'pt' : 'en';
+    applyTheme();
+    if(JSON.stringify(STATE) !== before && typeof boot === 'function') boot();
     /* STATE (com o ovr das fotos privadas) acabou de chegar; se o catálogo já
        estiver pronto, publica as imagens em falta dos meus exercícios. Cobre a
        corrida com o catalogSync() — o outro lado dispara o mesmo. */
@@ -652,6 +654,11 @@ async function authReset(){
 async function authSignOut(){
   try{ await sb.auth.signOut(); }catch(e){}
   USER = null;
+  /* Limpa o estado privado deste dispositivo. Senão, o próximo login (sobretudo
+     um utilizador NOVO, sem linha na nuvem) começava a ver os dados de quem
+     saiu — os pesos, metas e exercícios da conta anterior. */
+  STATE = {}; normState(); saveLocal();
   toast(t('signedout'));
   applyGate();
+  if(typeof boot === 'function') boot();
 }
