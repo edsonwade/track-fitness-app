@@ -51,6 +51,17 @@ function mediaUrl(path){
   return SUPA_URL + '/storage/v1/object/public/' + MEDIA_BUCKET + '/' + path;
 }
 
+/* Inverso de mediaUrl(): a partir de um URL público devolve o caminho dentro do
+   bucket, ou null se o URL não for deste bucket (um data: URL, um URL externo,
+   ou uma foto que a pessoa colou à mão). É o que permite registar no catálogo
+   partilhado tanto uma foto acabada de enviar como uma que já vinha do ovr
+   privado, tratando as duas só pelo URL. */
+function mediaPathFromUrl(url){
+  if(typeof url !== 'string' || !url) return null;
+  const prefix = SUPA_URL + '/storage/v1/object/public/' + MEDIA_BUCKET + '/';
+  return url.indexOf(prefix) === 0 ? url.slice(prefix.length) : null;
+}
+
 /* Encolhe uma imagem no browser antes de a enviar: lado maior a 1080px, JPEG
    ~0.82. Mantém o bucket leve e o upload rápido, e o cartão nunca precisa de
    um ficheiro maior do que a miniatura que desenha. Se o canvas falhar por
@@ -93,7 +104,7 @@ async function uploadExercisePhoto(file, key){
     const { error } = await sb.storage.from(MEDIA_BUCKET)
       .upload(path, blob, { upsert:true, contentType:'image/jpeg' });
     if(error) throw error;
-    return { ok:true, url: mediaUrl(path) };
+    return { ok:true, url: mediaUrl(path), path };
   }catch(e){
     console.error('uploadExercisePhoto', e);
     return { ok:false, reason:'error' };
@@ -474,6 +485,33 @@ async function publishExercise(obj, dayNo, block){
      privado — sem a chave, um exercício novo publicado ficava sem foto e caía
      na imagem de padrão do sistema. */
   return res.ok ? { ok:true, key } : res;
+}
+
+/* Publica a foto de um exercício PARA TODA A GENTE. Isto é o que faltava: sem
+   isto, a foto ficava só no ovr privado do autor e mais ninguém a via — um
+   exercício novo "para todos" aparecia sem imagem a toda a gente.
+
+   O ficheiro já está no bucket público (uploadExercisePhoto), por isso aqui só
+   se REGISTA: uma linha em exercise_images (slug = ex_key, uma imagem por
+   exercício, reviewed=true para ficar logo visível — a app não tem ecrã de
+   revisão) e depois liga-se `image_slug` na linha do exercício. A linha da
+   imagem entra primeiro porque `shared_exercises.image_slug` tem FK para
+   `exercise_images.slug`.
+
+   Só se aceita um URL que seja mesmo do bucket; um data: URL ou externo é
+   ignorado em silêncio (skipped) em vez de rebentar. Não é fatal ao guardar:
+   o texto/vídeo do exercício já foram publicados; se isto falhar, avisa-se. */
+async function linkSharedPhoto(exKey, photoUrl){
+  if(!sb || !USER || !SHARED.ready) return { ok:false, reason:'offline' };
+  const path = mediaPathFromUrl(photoUrl);
+  if(!path) return { ok:true, skipped:true };
+  try{
+    const { error } = await sb.from('exercise_images')
+      .upsert({ slug: exKey, storage_path: path, reviewed: true }, { onConflict:'slug' });
+    if(error) throw error;
+  }catch(e){ return { ok:false, reason:'error', msg: errText(e) }; }
+  /* liga a imagem ao exercício; reusa a escrita com versão optimista */
+  return saveSharedExercise(exKey, { image_slug: exKey });
 }
 
 /* Editar a prescrição de um exercício já no plano: mexe só no bloco corrente,
