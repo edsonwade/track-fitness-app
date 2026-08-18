@@ -152,7 +152,7 @@ en:{
   pg_ov:"Editing an exercise overrides it for this day only.",
 
   /* ---------- shared actions ---------- */
-  b_edit:"Edit",b_del:"Delete",b_save:"Save",b_cancel:"Cancel",  b_rmday:"Remove from day",b_update:"Update",
+  b_edit:"Edit",b_del:"Delete",b_save:"Save",b_cancel:"Cancel",b_close:"Close",  b_rmday:"Remove from day",b_update:"Update",
 
   /* ---------- exercise modal ---------- */
   m_add:"Add exercise",m_edit:"Edit exercise",
@@ -278,6 +278,12 @@ en:{
   sh_live:"Live",
   sh_remote:"Updated by someone else",
   sh_seeded:"Built-in plan published to the shared catalogue",
+  sh_backfilled:"Shared {n} exercise photo(s) with everyone",
+  sh_img_local:"This photo can't be shared — upload a file so everyone sees it",
+  sh_diag:"Test image sharing",
+  sh_diag_run:"Testing against the live database…",
+  sh_diag_pass:"All good — an image saved 'for everyone' does reach other accounts.",
+  sh_diag_fail:"A step failed below — that line is exactly why images don't reach others.",
   sh_scope:"Who is this change for?",
   sh_me:"Only me",sh_all:"Everyone",
   sh_scope_me:"Stays on your account. Nobody else sees it.",
@@ -432,7 +438,7 @@ pt:{
   pg_ov:"Editar um exercício substitui-o apenas neste dia.",
 
   /* ---------- ações comuns ---------- */
-  b_edit:"Editar",b_del:"Eliminar",b_save:"Guardar",b_cancel:"Cancelar",  b_rmday:"Remover do dia",b_update:"Atualizar",
+  b_edit:"Editar",b_del:"Eliminar",b_save:"Guardar",b_cancel:"Cancelar",b_close:"Fechar",  b_rmday:"Remover do dia",b_update:"Atualizar",
 
   /* ---------- modal de exercício ---------- */
   m_add:"Adicionar exercício",m_edit:"Editar exercício",
@@ -558,6 +564,12 @@ pt:{
   sh_live:"Ao vivo",
   sh_remote:"Alterado por outra pessoa",
   sh_seeded:"Plano de origem publicado no catálogo partilhado",
+  sh_backfilled:"Partilhei {n} foto(s) de exercício com toda a gente",
+  sh_img_local:"Esta foto não dá para partilhar — envia um ficheiro para toda a gente a ver",
+  sh_diag:"Testar partilha de imagem",
+  sh_diag_run:"A testar na base de dados real…",
+  sh_diag_pass:"Tudo certo — uma imagem guardada 'para todos' chega às outras contas.",
+  sh_diag_fail:"Um passo abaixo falhou — essa linha é exactamente o motivo de a imagem não chegar.",
   sh_scope:"Esta alteração é para quem?",
   sh_me:"Só eu",sh_all:"Todos",
   rm_scope:"Remover este exercício para quem?",

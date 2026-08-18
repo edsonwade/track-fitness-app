@@ -496,6 +496,10 @@ async function cloudPull(){
       applyTheme();
       if(JSON.stringify(STATE) !== before && typeof boot === 'function') boot();
     }
+    /* STATE (com o ovr das fotos privadas) acabou de chegar; se o catálogo já
+       estiver pronto, publica as imagens em falta dos meus exercícios. Cobre a
+       corrida com o catalogSync() — o outro lado dispara o mesmo. */
+    if(typeof backfillMyImages === 'function') setTimeout(backfillMyImages, 0);
   }catch(e){}
 }
 async function cloudPush(){

@@ -28,6 +28,7 @@ let exScope = 'me';
    re-renderizar o formulário e apagar o que a pessoa já escreveu. Repostos
    sempre que o sheet abre. */
 let exPhotoDraft = null;
+let exPhotoDraftPath = null;   /* caminho REAL no bucket devolvido pelo upload */
 let exPhotoReset = false;
 
 /* =========================================================================
@@ -2132,6 +2133,28 @@ const ACTIONS = {
      ser um gesto deliberado, não a herança da última vez. */
   catseed: ()=> seedCatalog(),
 
+  /* Diagnóstico de partilha de imagem: corre o caminho real contra a base e
+     mostra passo a passo o que acontece — prova (ou desmascara) o "para todos". */
+  imgdiag: async (btn)=>{
+    if(btn) btn.disabled = true;
+    toast(t('sh_diag_run'));
+    let steps = [];
+    try{ steps = await runImageDiagnostic(); }
+    catch(e){ steps = [{ step:'erro inesperado', ok:false, detail:String(e) }]; }
+    if(btn) btn.disabled = false;
+    const rows = steps.map(s=> `<div class="row">
+        <span style="font-size:1.1rem;line-height:1">${s.ok ? '✅' : '❌'}</span>
+        <div class="row__t"><p class="row__n">${esc(s.step)}</p>
+          ${s.detail ? `<p class="row__s" style="word-break:break-all">${esc(s.detail)}</p>` : ''}</div>
+      </div>`).join('');
+    const allOk = steps.length && steps.every(s=> s.ok);
+    openSheet(t('sh_diag'), `
+      <p class="u-mut" style="margin:0 0 var(--s3);font-size:var(--t-sm)">
+        ${allOk ? t('sh_diag_pass') : t('sh_diag_fail')}</p>
+      <div class="rows">${rows}</div>`, `
+      <button class="btn btn--acc" data-act="closesheet">${t('b_close')}</button>`);
+  },
+
   exscope: (btn, scope)=>{
     exScope = scope;
     const seg = btn.parentNode;
@@ -2143,7 +2166,7 @@ const ACTIONS = {
   /* Repor a foto automática: marca o reset e mostra já a foto que o auto-match
      devolveria, para a pré-visualização não mentir. Não re-renderiza o sheet. */
   exphotoreset: ()=>{
-    exPhotoReset = true; exPhotoDraft = null;
+    exPhotoReset = true; exPhotoDraft = null; exPhotoDraftPath = null;
     const img = el('exPhotoImg');
     if(!img) return;
     const inp = document.querySelector('#fExPhoto input[type="file"]');
@@ -2154,7 +2177,7 @@ const ACTIONS = {
   },
 
   exadd: ()=>{
-    exScope = 'me'; exPhotoDraft = null; exPhotoReset = false;
+    exScope = 'me'; exPhotoDraft = null; exPhotoDraftPath = null; exPhotoReset = false;
     openSheet(t('m_add'), exFormHTML({}, { photoKey:'new', photo:customPhoto({}) }), `
       <button class="btn btn--ghost" data-act="closesheet">${t('b_cancel')}</button>
       <button class="btn btn--acc" data-act="exsave" data-a1="add">${t('b_save')}</button>`);
@@ -2162,7 +2185,7 @@ const ACTIONS = {
   exeditcustom: (el2,id)=>{
     const c = (STATE.custom[curDay] || []).find(x=> x.id === parseInt(id,10));
     if(!c) return;
-    exScope = 'me'; exPhotoDraft = null; exPhotoReset = false;
+    exScope = 'me'; exPhotoDraft = null; exPhotoDraftPath = null; exPhotoReset = false;
     openSheet(t('m_edit'), exFormHTML(c, { isEdit:true, photoKey:'c'+c.id, photo:customPhoto(c) }), `
       <button class="btn btn--ghost" data-act="closesheet">${t('b_cancel')}</button>
       <button class="btn btn--acc" data-act="exsave" data-a1="custom" data-a2="${c.id}">${t('b_save')}</button>`);
@@ -2172,7 +2195,7 @@ const ACTIONS = {
     const it = DAYS.find(d=> d.id === curDay).items.find(x=> x.ex === exId);
     const b = it[curBlock];
     const o = STATE.ovr[curDay + ':' + exId] || {};
-    exScope = 'me'; exPhotoDraft = null; exPhotoReset = false;
+    exScope = 'me'; exPhotoDraft = null; exPhotoDraftPath = null; exPhotoReset = false;
     openSheet(t('m_edit'), exFormHTML({
       name:o.name || exName(e), eq:o.eq || L(e.eq), s:o.s || b.s,
       r:o.r || dtxt(b.r), l:o.l || dtxt(b.l), rest:o.rest || b.rest,
@@ -2222,14 +2245,16 @@ const ACTIONS = {
            shared row's current video instead of nulling it */
         if(vid) patch.video_id = vid;
         res = await saveSharedExercise(id, patch);
+        /* A foto que vai para toda a gente: a acabada de enviar (exPhotoDraft)
+           ou, se não mexeu na foto agora, a que já estava no ovr privado. Reset
+           explícito não publica nada. Calculada ANTES de gravar o item para
+           viajar DENTRO dele — o canal fiável que já chega a toda a gente. */
+        const photoUrl = exPhotoReset ? ''
+          : (exPhotoDraft || (STATE.ovr[curDay + ':' + id] && STATE.ovr[curDay + ':' + id].photo) || '');
         if(res.ok) res = await patchSharedItem(curDay, id, curBlock,
-          { s:obj.s, r:obj.r, l:obj.l, rest:obj.rest });
+          { s:obj.s, r:obj.r, l:obj.l, rest:obj.rest },
+          photoUrl ? { photo: photoUrl } : null);
         if(res.ok){
-          /* A foto que vai para o catálogo partilhado: a acabada de enviar
-             (exPhotoDraft) ou, se não mexeu na foto agora, a que já estava no
-             ovr privado. Reset explícito não publica nada. */
-          const photoUrl = exPhotoReset ? ''
-            : (exPhotoDraft || (STATE.ovr[curDay + ':' + id] && STATE.ovr[curDay + ':' + id].photo) || '');
           /* O plano partilhado passa a ser a fonte de verdade deste exercício.
              Um override privado (s/r/l/rest/name/eq) que tivesse ficado de uma
              edição "só eu" anterior tapava esta alteração no exCard() e fazia a
@@ -2246,8 +2271,10 @@ const ACTIONS = {
              liga image_slug). Não é fatal: o texto/vídeo já foram; se falhar,
              avisa mas deixa o save fechar na mesma. */
           if(photoUrl){
-            const pr = await linkSharedPhoto(id, photoUrl);
-            if(!pr.ok && !pr.skipped) toast(pr.msg ? ('⚠ ' + pr.msg) : t('sh_offline'));
+            const ppath = (photoUrl === exPhotoDraft) ? exPhotoDraftPath : null;
+            const pr = await linkSharedPhoto(id, photoUrl, ppath);
+            if(pr.skipped) toast('⚠ ' + t('sh_img_local'));
+            else if(!pr.ok) toast(pr.msg ? ('⚠ ' + pr.msg) : t('sh_offline'));
           }
         }
       } else {
@@ -2259,15 +2286,17 @@ const ACTIONS = {
         const cRec = mode === 'custom'
           ? (STATE.custom[curDay] || []).find(x=> x.id === parseInt(id,10)) : null;
         const carryPhoto = exPhotoReset ? '' : (exPhotoDraft || (cRec && cRec.photo) || '');
-        res = await publishExercise(obj, curDay, curBlock);
+        res = await publishExercise(obj, curDay, curBlock, carryPhoto);
         if(res.ok){
           if(res.key && carryPhoto){
             STATE.ovr[curDay + ':' + res.key] =
               Object.assign({}, STATE.ovr[curDay + ':' + res.key], { photo: carryPhoto });
             /* publica a foto PARA TODA A GENTE — sem isto o exercício novo
                aparecia sem imagem a toda a gente menos ao autor. Não fatal. */
-            const pr = await linkSharedPhoto(res.key, carryPhoto);
-            if(!pr.ok && !pr.skipped) toast(pr.msg ? ('⚠ ' + pr.msg) : t('sh_offline'));
+            const cpath = (carryPhoto === exPhotoDraft) ? exPhotoDraftPath : null;
+            const pr = await linkSharedPhoto(res.key, carryPhoto, cpath);
+            if(pr.skipped) toast('⚠ ' + t('sh_img_local'));
+            else if(!pr.ok) toast(pr.msg ? ('⚠ ' + pr.msg) : t('sh_offline'));
           }
           /* promovido: a cópia privada sairia a dobrar na lista do dia */
           if(mode === 'custom'){
@@ -2709,10 +2738,17 @@ function catalogRowHTML(){
                       btn = `<button class="btn btn--acc btn--sm" data-act="catseed">${t('sh_publish')}</button>`; }
   else sub = t('sh_cat_live').replace('%e', n).replace('%d', d);
 
+  /* Diagnóstico de partilha de imagem: prova, no dispositivo real e contra a base
+     real, se uma foto publicada "para todos" chega mesmo a outra conta — e, se não
+     chegar, diz PORQUÊ (RLS, permissão, coluna). Só quando o catálogo está ligado. */
+  const diag = SHARED.ready
+    ? `<button class="btn btn--ghost btn--sm" data-act="imgdiag">${t('sh_diag')}</button>` : '';
+
   return `<div class="switch">
       <div><p class="switch__t">${t('sh_cat')}</p><p class="switch__s">${esc(sub)}</p></div>
       ${btn}
-    </div>`;
+    </div>
+    ${diag}`;
 }
 
 /* O âmbito só aparece quando há catálogo partilhado. Sem ligação não há
@@ -2758,7 +2794,7 @@ const INPUTS = {
     const res = await uploadExercisePhoto(file, key);
     node.value = '';
     if(!res.ok){ toast(t('m_photo_err')); return; }
-    exPhotoDraft = res.url; exPhotoReset = false;
+    exPhotoDraft = res.url; exPhotoDraftPath = res.path || null; exPhotoReset = false;
     const img = el('exPhotoImg');
     if(img) img.src = res.url;
     toast(t('m_photo_ok'));
